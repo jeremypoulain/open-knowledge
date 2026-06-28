@@ -1,4 +1,4 @@
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { codeLanguageForExtension } from '@inkeep/open-knowledge-core';
 import { basicDarkInit, basicLightInit } from '@uiw/codemirror-theme-basic';
@@ -24,16 +24,35 @@ const lightTheme = basicLightInit({
 });
 
 type TextViewerProps = ViewerTextSource & {
+  anchor?: string;
   fileName: string;
   extension: string;
 };
 
-export function TextViewer({ fileName, extension, ...source }: TextViewerProps) {
+function parseLineAnchor(anchor: string | undefined): number | null {
+  if (!anchor) return null;
+  const line = new URLSearchParams(anchor).get('line');
+  if (!line) return null;
+  const n = Number.parseInt(line, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function scrollToLine(view: EditorView, lineNumber: number): void {
+  if (typeof Window !== 'function') return;
+  const line = view.state.doc.line(Math.max(1, Math.min(lineNumber, view.state.doc.lines)));
+  view.dispatch({
+    selection: EditorSelection.cursor(line.from),
+    effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+  });
+}
+
+export function TextViewer({ fileName, extension, anchor, ...source }: TextViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const { resolvedTheme } = useTheme();
   const fetchState = useViewerText(source);
   const loadedContent = fetchState.status === 'loaded' ? fetchState.content : null;
+  const anchorLine = parseLineAnchor(anchor);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -60,6 +79,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
         parent: containerRef.current,
       });
       viewRef.current = view;
+      if (anchorLine !== null) scrollToLine(view, anchorLine);
     });
 
     return () => {
@@ -67,7 +87,12 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       view?.destroy();
       viewRef.current = null;
     };
-  }, [loadedContent, extension, resolvedTheme]);
+  }, [loadedContent, extension, resolvedTheme, anchorLine]);
+
+  useEffect(() => {
+    if (anchorLine === null || viewRef.current === null) return;
+    scrollToLine(viewRef.current, anchorLine);
+  }, [anchorLine]);
 
   const extraAttrs = { 'data-text-viewer-extension': extension };
   if (fetchState.status === 'loading') {
@@ -95,6 +120,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       data-text-viewer=""
       data-text-viewer-state="loaded"
       data-text-viewer-extension={extension}
+      data-text-viewer-line={anchorLine ?? undefined}
     >
       <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" />
     </main>

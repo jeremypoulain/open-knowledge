@@ -82,7 +82,10 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail): voi
 function applyRawMdxNavigation(view: EditorView, detail: RawMdxNavDetail): void {
   requestAnimationFrame(() => {
     const doc = view.state.doc;
-    const pos = Math.min(detail.offset, doc.length);
+    const pos =
+      typeof detail.lineNumber === 'number'
+        ? doc.line(Math.max(1, Math.min(detail.lineNumber, doc.lines))).from
+        : Math.min(detail.offset ?? 0, doc.length);
     view.dispatch({
       selection: EditorSelection.cursor(pos),
       effects: EditorView.scrollIntoView(pos, { y: 'center' }),

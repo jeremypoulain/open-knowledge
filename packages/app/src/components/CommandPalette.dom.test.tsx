@@ -30,6 +30,22 @@ let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string 
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
+let fullContentStatus: {
+  enabled: boolean;
+  installed: boolean;
+  ready: boolean;
+  indexing: boolean;
+  dirty: boolean;
+  docCount: number | null;
+  lastIndexedAt: number | null;
+} | null = null;
+let semanticStatus: {
+  enabled?: boolean;
+  keyPresent?: boolean;
+  embedded?: number;
+  total?: number;
+} | null = null;
+let projectLocalConfig: { search?: { fullContent?: { enabled?: boolean } } } | null = null;
 const refreshInstallStates = () => {
   refreshInstallStatesCalls += 1;
 };
@@ -40,6 +56,7 @@ const installedAgentStates = {
 };
 const workspaceValue = { rootPath: '/workspace' };
 let pageListLoading = false;
+let pageListPages = new Set<string>();
 const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
 mock.module('@lingui/react/macro', () => ({
@@ -140,13 +157,34 @@ mock.module('@/components/CreateProjectDialog', () => ({
 
 mock.module('@/components/PageListContext', () => ({
   usePageList: () => ({
-    pages: new Set<string>(),
+    pages: pageListPages,
     pageTitles: new Map<string, string>(),
     pageMeta: new Map<string, unknown>(),
     folderPaths: new Set<string>(),
     filePaths: new Set<string>(),
     loading: pageListLoading,
   }),
+}));
+
+mock.module('@/hooks/use-full-content-search-status', () => ({
+  useFullContentSearchStatus: () => ({
+    status: fullContentStatus,
+    loaded: true,
+    reachable: true,
+    refresh: () => {},
+    triggerReindex: async () => true,
+  }),
+}));
+
+mock.module('@/hooks/use-semantic-search-status', () => ({
+  useSemanticSearchStatus: () => ({
+    status: semanticStatus,
+    refresh: () => {},
+  }),
+}));
+
+mock.module('@/lib/config-provider', () => ({
+  useConfigContext: () => ({ projectLocalConfig }),
 }));
 
 mock.module('@/editor/DocumentContext', () => ({
@@ -241,12 +279,16 @@ describe('CommandPalette DOM behavior', () => {
     activeDocName = 'docs/active';
     activeTarget = { kind: 'doc', docName: 'docs/active' };
     pageListLoading = false;
+    pageListPages = new Set<string>();
     requestDocPanelTabCalls = [];
     seedDialogProps = [];
     newItemDialogProps = [];
     createProjectDialogProps = [];
     commandDialogProps = [];
     refreshInstallStatesCalls = 0;
+    fullContentStatus = null;
+    semanticStatus = null;
+    projectLocalConfig = null;
     window.location.hash = '';
     globalThis.fetch = mock(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
@@ -322,6 +364,150 @@ describe('CommandPalette DOM behavior', () => {
     expect(screen.getByTestId('command-palette-new-folder').textContent).not.toMatch(
       /⇧⌘ N|Ctrl Shift N/,
     );
+  });
+
+  test('full-content file hits navigate to the asset viewer hash instead of an empty doc tab', async () => {
+    const { hashFromAssetPath } = await import('@/lib/doc-hash');
+    projectLocalConfig = { search: { fullContent: { enabled: true } } };
+    fullContentStatus = {
+      enabled: true,
+      installed: true,
+      ready: true,
+      indexing: false,
+      dirty: false,
+      docCount: 1,
+      lastIndexedAt: null,
+    };
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === '/api/search/full') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ready: true,
+              results: [
+                {
+                  path: 'packages/server/src/telemetry.ts',
+                  title: 'telemetry.ts',
+                  snippet: '... FileSpanExporter ...',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    }) as never;
+
+    await renderPalette({ bridge: null });
+    await setQuery('FileSpanExporter');
+
+    const row = await screen.findByTestId(
+      'command-palette-nav-file-packages/server/src/telemetry.ts',
+    );
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe(hashFromAssetPath('packages/server/src/telemetry.ts'));
+    });
+  });
+
+  test('full-content text hits navigate to the matched line in the asset viewer hash', async () => {
+    const { hashFromAssetPathWithAnchor } = await import('@/lib/doc-hash');
+    projectLocalConfig = { search: { fullContent: { enabled: true } } };
+    fullContentStatus = {
+      enabled: true,
+      installed: true,
+      ready: true,
+      indexing: false,
+      dirty: false,
+      docCount: 1,
+      lastIndexedAt: null,
+    };
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === '/api/search/full') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ready: true,
+              results: [
+                {
+                  path: 'packages/server/src/ai/ai-secrets-store.ts',
+                  title: 'ai-secrets-store.ts — line 151',
+                  snippet: 'function envKeyFor(provider: AiProviderId): string | null {',
+                  locator: { kind: 'line', line: 151 },
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    }) as never;
+
+    await renderPalette({ bridge: null });
+    await setQuery('envKeyFor');
+
+    const row = await screen.findByTestId(
+      'command-palette-nav-file-packages/server/src/ai/ai-secrets-store.ts',
+    );
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe(
+        hashFromAssetPathWithAnchor('packages/server/src/ai/ai-secrets-store.ts', 'line=151'),
+      );
+    });
+  });
+
+  test('full-content markdown hits navigate to the doc hash instead of the asset viewer', async () => {
+    const { hashFromDocName } = await import('@/lib/doc-hash');
+    pageListPages = new Set(['check']);
+    projectLocalConfig = { search: { fullContent: { enabled: true } } };
+    fullContentStatus = {
+      enabled: true,
+      installed: true,
+      ready: true,
+      indexing: false,
+      dirty: false,
+      docCount: 1,
+      lastIndexedAt: null,
+    };
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === '/api/search/full') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ready: true,
+              results: [
+                {
+                  path: 'check',
+                  title: 'check — line 11',
+                  snippet: '... fable ...',
+                  locator: { kind: 'line', line: 11 },
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    }) as never;
+
+    await renderPalette({ bridge: null });
+    await setQuery('fable');
+
+    const row = await screen.findByTestId('command-palette-nav-file-check');
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe(hashFromDocName('check'));
+    });
   });
 
   test('settings command is searchable by preferences/config, closes the palette, and routes through the canonical hash', async () => {

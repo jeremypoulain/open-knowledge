@@ -14,6 +14,7 @@
  * exact page/slide/sheet/section.
  */
 export type Locator =
+  | { kind: 'line'; line: number }
   | { kind: 'page'; page: number }
   | { kind: 'slide'; slide: number }
   | { kind: 'sheet'; sheet: string }

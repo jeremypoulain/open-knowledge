@@ -69,4 +69,10 @@ describe('AssetPreview — text-viewer dispatch', () => {
     expect(container.querySelector('[data-text-viewer]')).not.toBeNull();
     expect(container.querySelector('[data-text-viewer-extension="pdf"]')).not.toBeNull();
   });
+
+  test('a line-deep-link on an extensionless asset opens directly in the text viewer', () => {
+    window.location.hash = '#/__asset__/check#line%3D11';
+    const { container } = render(<AssetPreview assetPath="check" mediaKind={null} />);
+    expect(container.querySelector('[data-text-viewer]')).not.toBeNull();
+  });
 });

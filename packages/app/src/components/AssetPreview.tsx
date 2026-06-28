@@ -27,16 +27,18 @@ export function AssetPreview({ assetPath, mediaKind }: AssetPreviewProps) {
   const fileName = assetPath.split('/').pop() ?? assetPath;
   const rawExtension = fileName.includes('.') ? (fileName.split('.').pop() ?? '') : '';
   const extension = rawExtension.length > 0 ? rawExtension.toUpperCase() : 'FILE';
+  const anchor =
+    typeof window !== 'undefined'
+      ? (assetAnchorFromHash(window.location.hash) ?? undefined)
+      : undefined;
+  const hasLineAnchor = anchor?.startsWith('line=');
 
-  const effectiveMediaKind: InlineAssetMediaKind | null = forceText ? 'text' : mediaKind;
+  const effectiveMediaKind: InlineAssetMediaKind | null =
+    forceText || hasLineAnchor ? 'text' : mediaKind;
 
   if (effectiveMediaKind === 'pdf') {
     // Deep-link support: a `#page=N` fragment on the asset hash (e.g. from a
     // full-content search hit) opens the viewer scrolled to that page.
-    const anchor =
-      typeof window !== 'undefined'
-        ? (assetAnchorFromHash(window.location.hash) ?? undefined)
-        : undefined;
     return (
       <main className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -49,7 +51,8 @@ export function AssetPreview({ assetPath, mediaKind }: AssetPreviewProps) {
   if (effectiveMediaKind === 'text') {
     return (
       <TextViewer
-        key={assetPath}
+        key={`${assetPath}#${anchor ?? ''}`}
+        anchor={anchor}
         src={assetTextUrl(assetPath)}
         fileName={fileName}
         extension={rawExtension.toLowerCase()}

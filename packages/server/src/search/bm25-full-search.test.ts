@@ -46,28 +46,43 @@ function fileEntry(canonicalPath: string): FileIndexEntry {
 
 describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
   let dir: string;
+  let hitsPath: string;
   let prevBin: string | undefined;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'ok-bm25-'));
-    // A fake CLI: --version succeeds, index writes a stub, search echoes $FAKE_HITS.
-    const fakeBin = join(dir, 'fake-bm25-turbo.mjs');
+    hitsPath = join(dir, 'fake-hits.json');
+    // A fake CLI: --version succeeds, index writes a stub, search echoes a temp hits file.
+    const fakeBin = join(dir, 'fake-bm25-turbo');
     await writeFile(
       fakeBin,
       [
-        '#!/usr/bin/env node',
-        'import { writeFileSync } from "node:fs";',
-        'const a = process.argv.slice(2);',
-        'if (a[0] === "--version") { console.log("fake 0.0.0"); process.exit(0); }',
-        'if (a[0] === "index") { writeFileSync(a[a.indexOf("--output") + 1], "X"); process.exit(0); }',
-        'if (a[0] === "search") { console.log(process.env.FAKE_HITS || "[]"); process.exit(0); }',
-        'process.exit(1);',
+        '#!/bin/sh',
+        'cmd="$1"',
+        'if [ "$cmd" = "--version" ]; then',
+        '  echo "fake 0.0.0"',
+        '  exit 0',
+        'fi',
+        'if [ "$cmd" = "index" ]; then',
+        '  out=""',
+        '  prev=""',
+        '  for arg in "$@"; do',
+        '    if [ "$prev" = "--output" ]; then out="$arg"; break; fi',
+        '    prev="$arg"',
+        '  done',
+        '  : > "$out"',
+        '  exit 0',
+        'fi',
+        'if [ "$cmd" = "search" ]; then',
+        `  if [ -f ${JSON.stringify(hitsPath)} ]; then cat ${JSON.stringify(hitsPath)}; else echo "[]"; fi`,
+        '  exit 0',
+        'fi',
+        'exit 1',
       ].join('\n'),
       { mode: 0o755 },
     );
     prevBin = process.env.OK_BM25_TURBO_BIN;
-    // The script is executable with a `#!/usr/bin/env node` shebang, so execFile
-    // can run it directly as the "binary".
+    // The script is executable directly, so execFile can run it as the "binary".
     process.env.OK_BM25_TURBO_BIN = fakeBin;
   });
 
@@ -91,7 +106,7 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
     const index = new Map<string, FileIndexEntry>([['deck.pptx', fileEntry(deckPath)]]);
     let generation = 1;
     // segment ids: 0 → slide1, 1 → slide2. Return both; slide2 scores higher.
-    process.env.FAKE_HITS = '[{"id":1,"score":9.0},{"id":0,"score":2.0}]';
+    await writeFile(hitsPath, '[{"id":1,"score":9.0},{"id":0,"score":2.0}]');
 
     const service = createFullContentSearchService({
       isEnabled: () => true,
@@ -124,7 +139,7 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
     await writeFile(notePath, 'quarterly budget figures and notes');
     const indexDir = join(dir, 'persist-idx');
     const index = new Map<string, FileIndexEntry>([['note.md', fileEntry(notePath)]]);
-    process.env.FAKE_HITS = '[{"id":0,"score":5.0}]';
+    await writeFile(hitsPath, '[{"id":0,"score":5.0}]');
 
     const first = createFullContentSearchService({
       isEnabled: () => true,
@@ -153,11 +168,38 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
     expect(results[0]?.path).toBe('note.md');
   });
 
+  test('adds a line locator for plain-text hits', async () => {
+    const notePath = join(dir, 'line-note.ts');
+    await writeFile(
+      notePath,
+      ['const alpha = 1;', 'const beta = 2;', 'const envKeyFor = provider => provider.id;'].join(
+        '\n',
+      ),
+    );
+    await writeFile(hitsPath, '[{"id":0,"score":7.5}]');
+
+    const service = createFullContentSearchService({
+      isEnabled: () => true,
+      indexDir: join(dir, 'line-idx'),
+      getAllFilesIndex: () => new Map([['line-note.ts', fileEntry(notePath)]]),
+      getFileIndexGeneration: () => 1,
+    });
+
+    const results = await service.search('envKeyFor', 10);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      path: 'line-note.ts',
+      title: 'line-note.ts — line 3',
+      locator: { kind: 'line', line: 3 },
+    });
+    expect(results[0]?.snippet).toContain('envKeyFor');
+  });
+
   test('marks a persisted index dirty when a file changed while offline', async () => {
     const notePath = join(dir, 'note2.md');
     await writeFile(notePath, 'alpha bravo charlie');
     const indexDir = join(dir, 'persist-idx-2');
-    process.env.FAKE_HITS = '[{"id":0,"score":5.0}]';
+    await writeFile(hitsPath, '[{"id":0,"score":5.0}]');
 
     const before = createFullContentSearchService({
       isEnabled: () => true,

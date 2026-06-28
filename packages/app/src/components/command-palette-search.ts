@@ -20,6 +20,7 @@ export interface WorkspaceEntry {
 }
 
 export type FullContentLocator =
+  | { kind: 'line'; line: number }
   | { kind: 'page'; page: number }
   | { kind: 'slide'; slide: number }
   | { kind: 'sheet'; sheet: string }

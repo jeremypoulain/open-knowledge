@@ -63,4 +63,22 @@ describe('TextViewer — human-readable load errors', () => {
     expect(text).toContain('Something went wrong opening this file');
     expect(text).toContain('HTTP 503');
   });
+
+  test('a line anchor is surfaced on the loaded viewer for deep-link navigation', async () => {
+    const { container } = render(
+      <TextViewer
+        fileName="sample.ts"
+        extension="ts"
+        anchor="line=3"
+        loadText={async () => ({
+          ok: true,
+          text: ['const a = 1;', 'const b = 2;', 'const envKeyFor = true;'].join('\n'),
+        })}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-text-viewer-state="loaded"]')).not.toBeNull();
+    });
+    expect(container.querySelector('[data-text-viewer-line="3"]')).not.toBeNull();
+  });
 });

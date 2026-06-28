@@ -74,13 +74,19 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { RAW_MDX_NAV_EVENT } from '@/editor/extensions/raw-mdx-nav-event';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useFullContentSearchStatus } from '@/hooks/use-full-content-search-status';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useConfigContext } from '@/lib/config-provider';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
-import { hashFromAssetPathWithAnchor, hashFromDocName } from '@/lib/doc-hash';
+import {
+  hashFromAssetPath,
+  hashFromAssetPathWithAnchor,
+  hashFromDocName,
+  hashFromFolderPath,
+} from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
@@ -109,6 +115,20 @@ interface CommandPaletteProps {
 
 function navigateToDocHash(docName: string): void {
   window.location.assign(hashFromDocName(docName));
+}
+
+function hashForEntry(
+  entry: WorkspaceEntry | OmnibarRecentEntry,
+  options: { knownPages: ReadonlySet<string> },
+): string {
+  if (entry.kind === 'folder') return hashFromFolderPath(entry.path);
+  if (
+    ('bodyIndexed' in entry && entry.bodyIndexed === false) ||
+    !options.knownPages.has(entry.path)
+  ) {
+    return hashFromAssetPath(entry.path);
+  }
+  return hashFromDocName(entry.path);
 }
 
 function resolveCreateInitialDir(
@@ -226,13 +246,16 @@ export function computeVisibleSearchResults({
   searchResults,
   fallbackSearchResults,
   searchStatus,
+  allowFallbackResults,
 }: {
   searchResults: readonly WorkspaceSearchEntry[];
   fallbackSearchResults: readonly WorkspaceEntry[];
   searchStatus: 'idle' | 'loading' | 'success' | 'error';
+  allowFallbackResults: boolean;
 }): readonly (WorkspaceEntry | WorkspaceSearchEntry)[] {
   if (searchResults.length > 0) return searchResults;
   if (searchStatus === 'success') return [];
+  if (!allowFallbackResults) return [];
   return fallbackSearchResults;
 }
 
@@ -305,6 +328,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const fullContentEnabled = fullContentStatusInfo?.enabled ?? configuredFullContentEnabled;
   const fullContentCapable = fullContentEnabled && (fullContentStatusInfo?.installed ?? false);
   const fullContentIndexing = fullContentStatusInfo?.indexing ?? false;
+  const preferFullContentSearch = fullContentCapable && !isFullContentMode;
   const semanticIndexedCount = semanticCapability?.embedded ?? 0;
   const semanticTotalCount = semanticCapability?.total ?? 0;
   const semanticIndexing =
@@ -521,7 +545,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         settleErrorOrRetry();
       }, COMMAND_PALETTE_SEARCH_TIMEOUT_MS);
 
-      void fetchWorkspaceSearchEntries(trimmedDeferredQuery, { signal: controller.signal })
+      const fetchSearchEntries = preferFullContentSearch
+        ? fetchFullContentSearchEntries
+        : fetchWorkspaceSearchEntries;
+
+      void fetchSearchEntries(trimmedDeferredQuery, { signal: controller.signal })
         .then(({ entries, truncated, ready }) => {
           window.clearTimeout(timeoutTimer);
           if (cancelled) return;
@@ -556,7 +584,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       window.clearTimeout(retryTimer);
       activeController?.abort();
     };
-  }, [open, trimmedDeferredQuery, inExclusiveMode, pagesLoading]);
+  }, [open, trimmedDeferredQuery, inExclusiveMode, pagesLoading, preferFullContentSearch]);
 
   const runAction = (fn: () => Promise<void> | void, fallback = t`Command failed.`) => {
     onOpenChange(false);
@@ -579,7 +607,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   function navigateToEntry(entry: WorkspaceEntry | OmnibarRecentEntry) {
     onOpenChange(false);
     rememberNavigation(entry);
-    navigateToDocHash(entry.path);
+    window.location.assign(hashForEntry(entry, { knownPages: pages }));
   }
 
   const showRecentNavigation =
@@ -588,6 +616,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     searchResults,
     fallbackSearchResults,
     searchStatus,
+    allowFallbackResults: !preferFullContentSearch,
   });
   const showNavigation = !inExclusiveMode && visibleSearchResults.length > 0;
   const showSearchPreparing =
@@ -839,9 +868,22 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   function navigateToFullContentEntry(entry: WorkspaceSearchEntry) {
     onOpenChange(false);
     rememberNavigation(entry);
+    if (entry.locator?.kind === 'line' && pages.has(entry.path)) {
+      window.dispatchEvent(
+        new CustomEvent(RAW_MDX_NAV_EVENT, {
+          detail: { lineNumber: entry.locator.line },
+        }),
+      );
+      window.location.assign(hashFromDocName(entry.path));
+      return;
+    }
     // PDF hits carry a page locator → deep-link the asset viewer to that page.
     if (entry.locator?.kind === 'page' && entry.path.toLowerCase().endsWith('.pdf')) {
       window.location.assign(hashFromAssetPathWithAnchor(entry.path, `page=${entry.locator.page}`));
+      return;
+    }
+    if (entry.locator?.kind === 'line') {
+      window.location.assign(hashFromAssetPathWithAnchor(entry.path, `line=${entry.locator.line}`));
       return;
     }
     navigateToEntry(entry);
@@ -959,7 +1001,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           {/* Shown only when full content search is enabled + the bm25-turbo CLI
               is installed. Enters an exclusive "All files" mode — a
               deliberate-submit BM25 search over every file body. */}
-          {fullContentCapable ? (
+          {fullContentCapable && !preferFullContentSearch ? (
             <button
               type="button"
               onClick={() => (isFullContentMode ? exitFullContentMode() : enterFullContentMode())}
@@ -1179,7 +1221,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           ) : null}
           {showSearchLoading && !showNavigation ? (
             <CommandEmpty>
-              <Trans>Searching</Trans>
+              {preferFullContentSearch ? (
+                <Trans>Searching all files</Trans>
+              ) : (
+                <Trans>Searching</Trans>
+              )}
             </CommandEmpty>
           ) : null}
           {!hasAnyResults ? (
@@ -1559,7 +1605,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   key={makeOmnibarRecentKey(entry.kind, entry.path)}
                   entry={entry}
                   query={trimmedDeferredQuery}
-                  onSelect={() => navigateToEntry(entry)}
+                  onSelect={() =>
+                    preferFullContentSearch
+                      ? navigateToFullContentEntry(entry as WorkspaceSearchEntry)
+                      : navigateToEntry(entry)
+                  }
                 />
               ))}
             </CommandGroup>

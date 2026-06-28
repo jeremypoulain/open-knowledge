@@ -13264,6 +13264,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
   // --- Full-content (BM25) search: a second, opt-in engine over all file bodies.
   const FullSearchLocatorSchema = z.union([
+    z.object({ kind: z.literal('line'), line: z.number() }),
     z.object({ kind: z.literal('page'), page: z.number() }),
     z.object({ kind: z.literal('slide'), slide: z.number() }),
     z.object({ kind: z.literal('sheet'), sheet: z.string() }),
