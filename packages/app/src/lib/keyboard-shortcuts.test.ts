@@ -22,6 +22,7 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcut('new-folder', 'mac')).toBe('⇧⌘ N');
     expect(formatShortcut('new-folder', 'windowsLinux')).toBe('Ctrl Shift N');
     expect(formatShortcut('edit-with-ai', 'mac')).toBe('⇧⌘ I');
+    expect(formatShortcut('suggest-tags', 'mac')).toBe('⌥⌘ T');
   });
 
   test('formats spoken shortcut labels for accessible names', () => {
@@ -369,6 +370,30 @@ describe('keyboard shortcut registry', () => {
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, shiftKey: true, key: 'i' },
         'edit-with-ai',
+        'mac',
+      ),
+    ).toBe(false);
+  });
+
+  test('matches suggest-tags on Option/Alt + Cmd/Ctrl + T', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: true, shiftKey: false, key: 't', code: 'KeyT' },
+        'suggest-tags',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: true, shiftKey: false, key: 't', code: 'KeyT' },
+        'suggest-tags',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 't', code: 'KeyT' },
+        'suggest-tags',
         'mac',
       ),
     ).toBe(false);

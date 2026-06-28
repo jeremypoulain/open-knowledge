@@ -348,6 +348,20 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
+    id: 'suggest-tags',
+    category: 'wysiwyg',
+    title: msg`Suggest tags`,
+    description: msg`Ask the AI to suggest document tags and write them to the frontmatter.`,
+    scope: msg`Visual editor`,
+    bindings: [
+      {
+        mac: '⌥⌘ T',
+        windowsLinux: 'Ctrl Alt T',
+        match: { code: 'KeyT', anyMod: true, altKey: true, allowExtraModifiers: true },
+      },
+    ],
+  },
+  {
     id: 'history-undo-redo',
     category: 'wysiwyg',
     title: msg`Undo or redo`,

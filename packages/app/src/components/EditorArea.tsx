@@ -26,6 +26,7 @@ import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { emitSuggestTags } from '@/editor/ai/suggest-tags-events';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
 import { FindReplaceController } from '@/editor/find-replace/FindReplaceController';
 import { mountPromiseHasResolved } from '@/editor/mount-promise';
@@ -293,6 +294,17 @@ function EditorAreaInner({
     togglePanel,
   ]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (matchesKeyboardShortcut(event, 'suggest-tags')) {
+        event.preventDefault();
+        emitSuggestTags(activeDocName);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeDocName]);
+
   const previousDocNameRef = useRef<string | null>(null);
   const [previousDocName, setPreviousDocName] = useState<string | null>(null);
   const [composerDismissed, setComposerDismissed] = useState(false);
@@ -515,6 +527,7 @@ function EditorAreaInner({
           {!isConflict && (
             <EditorToolbar
               activeDocName={activeDocName}
+              activeProvider={activeProvider}
               isSourceMode={isSourceMode}
               sourceDisabled={sourceDisabled}
               onModeChange={onModeChange}

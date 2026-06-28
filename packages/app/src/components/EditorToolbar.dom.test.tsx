@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -16,6 +17,12 @@ mock.module('./EditorBreadcrumb', () => ({
   ),
 }));
 
+mock.module('@/editor/ai/SuggestTagsPopover', () => ({
+  SuggestTagsPopover: ({ provider }: { provider: HocuspocusProvider }) => (
+    <span data-testid="suggest-tags-probe">{provider.configuration.name}</span>
+  ),
+}));
+
 describe('EditorToolbar runtime layout', () => {
   afterEach(() => cleanup());
 
@@ -26,6 +33,9 @@ describe('EditorToolbar runtime layout', () => {
       <TooltipProvider>
         <EditorToolbar
           activeDocName="docs/Page.md"
+          activeProvider={
+            { configuration: { name: 'docs/Page.md' } } as unknown as HocuspocusProvider
+          }
           isSourceMode={false}
           sourceDisabled={false}
           onModeChange={() => {}}
@@ -65,5 +75,10 @@ describe('EditorToolbar runtime layout', () => {
     const sourceButton = screen.getByRole('radio', { name: 'Markdown source' });
     const middleCell = sourceButton.closest('.pointer-events-auto.flex.justify-center');
     expect(middleCell).toBeTruthy();
+  });
+
+  test('renders the suggest-tags affordance when a provider is active', async () => {
+    await renderToolbar();
+    expect(screen.getByTestId('suggest-tags-probe').textContent).toBe('docs/Page.md');
   });
 });

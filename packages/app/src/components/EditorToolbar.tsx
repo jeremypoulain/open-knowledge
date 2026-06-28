@@ -1,9 +1,11 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { parseManagedArtifactName, type SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ListPlus, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SuggestTagsPopover } from '@/editor/ai/SuggestTagsPopover';
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
@@ -16,6 +18,7 @@ const SkillEditorActions = lazy(async () => ({
 
 interface EditorToolbarProps {
   activeDocName: string | null;
+  activeProvider: HocuspocusProvider | null;
   isSourceMode: boolean;
   sourceDisabled: boolean;
   onModeChange: (mode: EditorModeValue) => void;
@@ -27,6 +30,7 @@ interface EditorToolbarProps {
 
 export function EditorToolbar({
   activeDocName,
+  activeProvider,
   isSourceMode,
   sourceDisabled,
   onModeChange,
@@ -38,6 +42,7 @@ export function EditorToolbar({
   const { t } = useLingui();
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
+  const suggestTagsShortcut = formatShortcut('suggest-tags');
   const managed = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const projectSkillName = activeDocName ? parseProjectSkillContentDocName(activeDocName) : null;
   const activeSkill: { scope: SkillScope; name: string } | null =
@@ -115,6 +120,16 @@ export function EditorToolbar({
             </TooltipContent>
           </Tooltip>
         )}
+        {showAddPropertyButton && activeProvider ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SuggestTagsPopover provider={activeProvider} />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <Trans>Suggest tags ({suggestTagsShortcut})</Trans>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <Button
             data-doc-panel-toggle=""
