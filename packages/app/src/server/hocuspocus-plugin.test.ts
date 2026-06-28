@@ -129,6 +129,7 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
 
     for (const bypassUrl of [
       '/src/editor/slash-command/preview-assets/image-preview.png?import',
+      '/favicon.png',
       '/favicon.svg',
       '/@vite/client',
       '/@fs/path/to/file.ts',
