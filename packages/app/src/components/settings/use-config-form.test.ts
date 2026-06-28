@@ -12,6 +12,7 @@ import {
   type RunCommitBinding,
   type RunCommitForm,
   runCommit,
+  runCommitValue,
 } from './use-config-form';
 
 describe('applyExternalUpdate', () => {
@@ -135,6 +136,27 @@ describe('runCommit — success path', () => {
     expect(patch.mock.calls[0]?.[0]).toEqual({ appearance: { theme: null } });
     expect(resetField).toHaveBeenCalledTimes(1);
     expect(resetField.mock.calls[0]?.[1]).toMatchObject({ defaultValue: null });
+  });
+
+  test('runCommitValue patches the explicit value instead of relying on getValues', () => {
+    const { form, getValues, resetField } = createMockForm(() => 'stale-value');
+    const { binding, patch } = createMockBinding(() => ({
+      ok: true,
+      effective: { ai: { providers: { zai: { model: 'glm-5.2-plus' } } } } as unknown as Config,
+      appliedPaths: ['ai.providers.zai.model'],
+    }));
+
+    const result = runCommitValue(form, binding, 'ai.providers.zai.model', 'glm-5.2-plus');
+
+    expect(result).toBe(true);
+    expect(getValues).not.toHaveBeenCalled();
+    expect(patch).toHaveBeenCalledWith({
+      ai: { providers: { zai: { model: 'glm-5.2-plus' } } },
+    });
+    expect(resetField).toHaveBeenCalledWith('ai.providers.zai.model', {
+      defaultValue: 'glm-5.2-plus',
+      keepError: false,
+    });
   });
 });
 
@@ -371,6 +393,7 @@ describe('useConfigForm module shape', () => {
     expect(typeof mod.useConfigForm).toBe('function');
     expect(typeof mod.applyExternalUpdate).toBe('function');
     expect(typeof mod.runCommit).toBe('function');
+    expect(typeof mod.runCommitValue).toBe('function');
     expect(typeof mod.pickFirstIssueForPath).toBe('function');
   });
 });

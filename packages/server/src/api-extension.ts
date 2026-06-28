@@ -35,6 +35,8 @@ import {
   AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
+  AI_PROVIDERS,
+  type AiTransformAction,
   ApiConfigSuccessSchema,
   ASSET_EXTENSIONS,
   applyPatchToFm,
@@ -93,6 +95,14 @@ import {
   LINKABLE_ASSET_EXTENSIONS,
   type LifecycleStatus,
   LinkGraphSuccessSchema,
+  LocalOpAiKeyClearRequestSchema,
+  LocalOpAiKeyMutationSuccessSchema,
+  LocalOpAiKeySetRequestSchema,
+  LocalOpAiModelsRequestSchema,
+  LocalOpAiModelsSuccessSchema,
+  LocalOpAiStatusSuccessSchema,
+  LocalOpAiSuggestTagsRequestSchema,
+  LocalOpAiTransformRequestSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
@@ -237,6 +247,20 @@ import {
   iconFromClientName,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
+import {
+  type AiKeyDescription,
+  AiSecretsStore,
+  completeChat,
+  LlmHttpError,
+  LlmRequestError,
+  listAvailableModels,
+  parseTagSuggestions,
+  readAiUserConfig,
+  resolveAiProvider,
+  streamChat,
+  systemPromptForAction,
+  TAG_SUGGESTION_SYSTEM_PROMPT,
+} from './ai/index.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { collectReferencedAssets, toContentRelativePath } from './asset-references.ts';
 import { assetContentTypeForPath } from './asset-serve-middleware.ts';
@@ -1792,6 +1816,7 @@ export interface ApiExtensionOptions {
   fullContentSearch?: FullContentSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
   embeddingsSecretsFile?: string;
+  aiSecretsFile?: string;
 }
 
 interface WorkspaceSearchCacheEntry {
@@ -1839,6 +1864,10 @@ function applyDiskEventToLiveAllFilesIndex(
     updateFileIndex(event, live);
   }
 }
+
+/** Extracts a de-duplicated, validated list of tag suggestions from a model
+ *  response. Tolerates a leading ```json fence and surrounding prose. */
+export { parseTagSuggestions } from './ai/index.ts';
 
 export function createApiExtension(options: ApiExtensionOptions): Extension {
   const {
@@ -1888,6 +1917,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     fullContentSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
+    aiSecretsFile,
     ephemeral = false,
   } = options;
 
@@ -13218,6 +13248,371 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     },
   );
 
+  // ---- In-app AI: provider key management, status, transform, suggest-tags ----
+  const HANDLE_LOCAL_OP_AI_SET_KEY = 'local-op-ai-set-key';
+  const HANDLE_LOCAL_OP_AI_CLEAR_KEY = 'local-op-ai-clear-key';
+  const HANDLE_LOCAL_OP_AI_MODELS = 'local-op-ai-models';
+  const HANDLE_LOCAL_OP_AI_STATUS = 'local-op-ai-status';
+  const HANDLE_LOCAL_OP_AI_TRANSFORM = 'local-op-ai-transform';
+  const HANDLE_LOCAL_OP_AI_SUGGEST_TAGS = 'local-op-ai-suggest-tags';
+  const LOCAL_OP_AI_GUARD = '/api/local-op/ai';
+
+  function aiUserConfig() {
+    return readAiUserConfig(projectDir ?? '.', {
+      configHomedirOverride: homeDirOverride,
+    });
+  }
+
+  const handleLocalOpAiSetKey = withValidation(
+    LocalOpAiKeySetRequestSchema,
+    async (_req, res, body) => {
+      if (!localOpGuard.tryAcquire(LOCAL_OP_AI_GUARD)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'An AI key operation is already in progress.',
+          { handler: HANDLE_LOCAL_OP_AI_SET_KEY, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+      try {
+        await new AiSecretsStore(aiSecretsFile).setKey(body.provider, body.key);
+        successResponse(
+          res,
+          200,
+          LocalOpAiKeyMutationSuccessSchema,
+          { provider: body.provider, keyPresent: true },
+          { handler: HANDLE_LOCAL_OP_AI_SET_KEY, extraHeaders: { 'Cache-Control': 'no-store' } },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to store the key.', {
+          handler: HANDLE_LOCAL_OP_AI_SET_KEY,
+          cause: e,
+        });
+      } finally {
+        localOpGuard.release(LOCAL_OP_AI_GUARD);
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_SET_KEY,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_SET_KEY }),
+    },
+  );
+
+  const handleLocalOpAiClearKey = withValidation(
+    LocalOpAiKeyClearRequestSchema,
+    async (_req, res, body) => {
+      if (!localOpGuard.tryAcquire(LOCAL_OP_AI_GUARD)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'An AI key operation is already in progress.',
+          { handler: HANDLE_LOCAL_OP_AI_CLEAR_KEY, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+      try {
+        await new AiSecretsStore(aiSecretsFile).clearKey(body.provider);
+        successResponse(
+          res,
+          200,
+          LocalOpAiKeyMutationSuccessSchema,
+          { provider: body.provider, keyPresent: false },
+          { handler: HANDLE_LOCAL_OP_AI_CLEAR_KEY, extraHeaders: { 'Cache-Control': 'no-store' } },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to clear the key.', {
+          handler: HANDLE_LOCAL_OP_AI_CLEAR_KEY,
+          cause: e,
+        });
+      } finally {
+        localOpGuard.release(LOCAL_OP_AI_GUARD);
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_CLEAR_KEY,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_CLEAR_KEY }),
+    },
+  );
+
+  const handleLocalOpAiStatus = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const keyDescs = await new AiSecretsStore(aiSecretsFile).describeKeys();
+        const cfg = aiUserConfig();
+        const providers: Record<
+          string,
+          {
+            present: boolean;
+            hint: string | null;
+            source: 'file' | 'env' | null;
+            model: string | null;
+            baseUrl: string | null;
+          }
+        > = {};
+        for (const def of AI_PROVIDERS) {
+          const desc: AiKeyDescription = keyDescs[def.id] ?? {
+            present: false,
+            hint: null,
+            source: null,
+          };
+          const per = cfg.providers[def.id];
+          providers[def.id] = {
+            present: desc.present,
+            hint: desc.hint,
+            source: desc.source,
+            model: per?.model ?? null,
+            baseUrl: per?.baseUrl ?? null,
+          };
+        }
+        successResponse(
+          res,
+          200,
+          LocalOpAiStatusSuccessSchema,
+          { defaultProvider: cfg.defaultProvider, providers },
+          { handler: HANDLE_LOCAL_OP_AI_STATUS, extraHeaders: { 'Cache-Control': 'no-store' } },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read AI provider status.',
+          { handler: HANDLE_LOCAL_OP_AI_STATUS, cause: e },
+        );
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_STATUS,
+      method: 'GET',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_STATUS }),
+    },
+  );
+
+  const handleLocalOpAiModels = withValidation(
+    LocalOpAiModelsRequestSchema,
+    async (req, res, body) => {
+      const cfg = aiUserConfig();
+      const resolved = resolveAiProvider(cfg, body.provider);
+      const store = new AiSecretsStore(aiSecretsFile);
+      const key = await store.getKey(resolved.provider.id);
+      if (resolved.provider.keyRequired && !key) {
+        errorResponse(
+          res,
+          400,
+          'urn:ok:error:invalid-request',
+          `No API key set for ${resolved.provider.label}. Add one in Settings → AI.`,
+          { handler: HANDLE_LOCAL_OP_AI_MODELS },
+        );
+        return;
+      }
+
+      const controller = new AbortController();
+      req.on('close', () => {
+        if (!res.writableEnded) controller.abort();
+      });
+
+      try {
+        const models = await listAvailableModels({
+          provider: resolved.provider,
+          baseUrl: resolved.baseUrl,
+          apiKey: key,
+          signal: controller.signal,
+        });
+        successResponse(
+          res,
+          200,
+          LocalOpAiModelsSuccessSchema,
+          { provider: resolved.provider.id, models },
+          { handler: HANDLE_LOCAL_OP_AI_MODELS, extraHeaders: { 'Cache-Control': 'no-store' } },
+        );
+      } catch (err) {
+        const detail =
+          err instanceof LlmHttpError
+            ? `The AI provider returned an error (HTTP ${err.status}).`
+            : err instanceof LlmRequestError
+              ? err.message
+              : 'The AI request failed.';
+        errorResponse(res, 502, 'urn:ok:error:internal-server-error', detail, {
+          handler: HANDLE_LOCAL_OP_AI_MODELS,
+          cause: err,
+        });
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_MODELS,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_MODELS }),
+    },
+  );
+
+  /** Streams transform deltas as NDJSON: {type:'delta',text}, {type:'complete'},
+   *  or {type:'error',message}. */
+  const handleLocalOpAiTransform = withValidation(
+    LocalOpAiTransformRequestSchema,
+    async (req, res, body) => {
+      const cfg = aiUserConfig();
+      const resolved = resolveAiProvider(cfg, body.provider, body.model);
+      const store = new AiSecretsStore(aiSecretsFile);
+      const key = await store.getKey(resolved.provider.id);
+      if (resolved.provider.keyRequired && !key) {
+        errorResponse(
+          res,
+          400,
+          'urn:ok:error:invalid-request',
+          `No API key set for ${resolved.provider.label}. Add one in Settings → AI.`,
+          { handler: HANDLE_LOCAL_OP_AI_TRANSFORM },
+        );
+        return;
+      }
+      const system = systemPromptForAction(body.action as AiTransformAction, body.instruction);
+      const messages = [{ role: 'user' as const, content: body.selection }];
+
+      const controller = new AbortController();
+      req.on('close', () => {
+        if (!res.writableEnded) controller.abort();
+      });
+
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson',
+        'Transfer-Encoding': 'chunked',
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-cache',
+      });
+
+      const writeLine = async (line: string): Promise<void> => {
+        if (res.writableEnded || res.destroyed) return;
+        if (res.write(line)) return;
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            res.off('drain', done);
+            res.off('close', done);
+            resolve();
+          };
+          res.once('drain', done);
+          res.once('close', done);
+        });
+      };
+
+      try {
+        const stream = streamChat(
+          {
+            provider: resolved.provider,
+            model: resolved.model,
+            baseUrl: resolved.baseUrl,
+            apiKey: key,
+            system,
+            messages,
+            signal: controller.signal,
+          },
+          { surface: 'transform' },
+        );
+        for await (const delta of stream) {
+          await writeLine(`${JSON.stringify({ type: 'delta', text: delta })}\n`);
+        }
+        await writeLine(`${JSON.stringify({ type: 'complete' })}\n`);
+      } catch (err) {
+        const message =
+          err instanceof LlmHttpError
+            ? `The AI provider returned an error (HTTP ${err.status}).`
+            : err instanceof LlmRequestError
+              ? err.message
+              : 'The AI request failed.';
+        await writeLine(`${JSON.stringify({ type: 'error', message })}\n`);
+        log.warn({ err, handler: HANDLE_LOCAL_OP_AI_TRANSFORM }, '[ai/transform] stream failed');
+      } finally {
+        if (!res.writableEnded) res.end();
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_TRANSFORM,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_TRANSFORM }),
+    },
+  );
+
+  const handleLocalOpAiSuggestTags = withValidation(
+    LocalOpAiSuggestTagsRequestSchema,
+    async (req, res, body) => {
+      const cfg = aiUserConfig();
+      const resolved = resolveAiProvider(cfg, body.provider, body.model);
+      const store = new AiSecretsStore(aiSecretsFile);
+      const key = await store.getKey(resolved.provider.id);
+      if (resolved.provider.keyRequired && !key) {
+        errorResponse(
+          res,
+          400,
+          'urn:ok:error:invalid-request',
+          `No API key set for ${resolved.provider.label}. Add one in Settings → AI.`,
+          { handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS },
+        );
+        return;
+      }
+      const existing = Array.isArray(body.existingTags) ? body.existingTags : [];
+      const existingLine =
+        existing.length > 0
+          ? `\n\nExisting tag vocabulary (prefer reusing these when they fit): ${existing.join(', ')}`
+          : '';
+      const userPrompt = `Document (markdown):\n\n${body.docMarkdown}${existingLine}`;
+      try {
+        const controller = new AbortController();
+        req.on('close', () => {
+          if (!res.writableEnded) controller.abort();
+        });
+        const raw = await completeChat(
+          {
+            provider: resolved.provider,
+            model: resolved.model,
+            baseUrl: resolved.baseUrl,
+            apiKey: key,
+            system: TAG_SUGGESTION_SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: userPrompt }],
+            signal: controller.signal,
+          },
+          { surface: 'suggest-tags' },
+        );
+        const tags = parseTagSuggestions(raw);
+        successResponse(
+          res,
+          200,
+          z.object({ tags: z.array(z.string()) }).loose(),
+          { tags },
+          {
+            handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+            extraHeaders: { 'Cache-Control': 'no-store' },
+          },
+        );
+      } catch (err) {
+        const detail =
+          err instanceof LlmHttpError
+            ? `The AI provider returned an error (HTTP ${err.status}).`
+            : err instanceof LlmRequestError
+              ? err.message
+              : 'The AI request failed.';
+        errorResponse(res, 502, 'urn:ok:error:internal-server-error', detail, {
+          handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+          cause: err,
+        });
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS }),
+    },
+  );
+
   const handleSemanticStatus = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
@@ -13488,6 +13883,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/auth/set-identity': handleLocalOpAuthSetIdentity,
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
+    '/api/local-op/ai/keys/set': handleLocalOpAiSetKey,
+    '/api/local-op/ai/keys/clear': handleLocalOpAiClearKey,
+    '/api/local-op/ai/models': handleLocalOpAiModels,
+    '/api/local-op/ai/status': handleLocalOpAiStatus,
+    '/api/local-op/ai/transform': handleLocalOpAiTransform,
+    '/api/local-op/ai/suggest-tags': handleLocalOpAiSuggestTags,
     '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/spawn-cursor': handleSpawnCursorRoute,
     '/api/handoff': handleHandoffDispatchRoute,

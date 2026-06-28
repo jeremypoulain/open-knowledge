@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AI_PROVIDER_ID_VALUES } from '../ai/providers.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 export const DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST: readonly string[] = Object.freeze([
@@ -287,6 +288,36 @@ export const ConfigSchema = z.looseObject({
       },
       fullContent: { enabled: false },
     }),
+  ai: z
+    .looseObject({
+      defaultProvider: z
+        .enum(AI_PROVIDER_ID_VALUES)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            'Which AI provider the in-app text actions (transform selection, suggest tags) call by default. API keys are stored separately in ~/.ok/secrets.yml. A personal preference (user scope) — not shared with the project.',
+        })
+        .optional(),
+      providers: z
+        .record(
+          z.string(),
+          z.looseObject({
+            model: z.string().optional(),
+            baseUrl: z.string().optional(),
+          }),
+        )
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            'Per-provider non-secret overrides keyed by provider id: model id and baseUrl. API keys are NOT stored here — set them in Settings → AI (they land in ~/.ok/secrets.yml). A personal preference (user scope).',
+        })
+        .optional(),
+    })
+    .default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

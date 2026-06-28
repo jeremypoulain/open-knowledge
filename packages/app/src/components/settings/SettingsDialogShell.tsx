@@ -58,6 +58,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       items: [
         { id: 'preferences', label: t`Preferences` },
         { id: 'hotkeys', label: t`Hotkeys` },
+        { id: 'ai', label: t`AI` },
         { id: 'account', label: t`Account` },
       ],
     },

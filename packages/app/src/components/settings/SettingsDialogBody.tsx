@@ -68,6 +68,7 @@ import {
 } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
+import { AiProvidersSection } from './AiProvidersSection';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { OkignoreSection } from './OkignoreSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
@@ -143,6 +144,9 @@ export function SettingsDialogBody({
   }
   if (activeId === 'hotkeys') {
     return <HotkeysSection />;
+  }
+  if (activeId === 'ai') {
+    return userBinding ? <AiProvidersSection binding={userBinding} /> : <SectionSkeleton />;
   }
   if (activeId === 'account') {
     return (

@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { AI_PROVIDER_ID_VALUES } from '../../ai/providers.ts';
 
 export const LocalOpOkInitRequestSchema = z
   .object({
@@ -71,3 +72,95 @@ export type LocalOpAuthStatusSuccess = z.infer<typeof LocalOpAuthStatusSuccessSc
 
 export const LocalOpAuthEmptySuccessSchema = z.object({}).loose() satisfies StandardSchemaV1;
 export type LocalOpAuthEmptySuccess = z.infer<typeof LocalOpAuthEmptySuccessSchema>;
+
+export const AiProviderIdSchema = z.enum(AI_PROVIDER_ID_VALUES) satisfies StandardSchemaV1;
+
+export const LocalOpAiKeySetRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema,
+    key: z.string().min(1),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiKeySetRequest = z.infer<typeof LocalOpAiKeySetRequestSchema>;
+
+export const LocalOpAiKeyClearRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema,
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiKeyClearRequest = z.infer<typeof LocalOpAiKeyClearRequestSchema>;
+
+export const LocalOpAiKeyMutationSuccessSchema = z
+  .object({
+    provider: AiProviderIdSchema,
+    keyPresent: z.boolean(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiKeyMutationSuccess = z.infer<typeof LocalOpAiKeyMutationSuccessSchema>;
+
+export const LocalOpAiStatusSuccessSchema = z
+  .object({
+    defaultProvider: AiProviderIdSchema.nullable(),
+    providers: z.record(
+      z.string(),
+      z.object({
+        present: z.boolean(),
+        hint: z.string().nullable(),
+        source: z.enum(['file', 'env']).nullable(),
+        model: z.string().nullable(),
+        baseUrl: z.string().nullable(),
+      }),
+    ),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiStatusSuccess = z.infer<typeof LocalOpAiStatusSuccessSchema>;
+
+export const LocalOpAiModelsRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema,
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiModelsRequest = z.infer<typeof LocalOpAiModelsRequestSchema>;
+
+export const LocalOpAiModelsSuccessSchema = z
+  .object({
+    provider: AiProviderIdSchema,
+    models: z.array(z.string()),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiModelsSuccess = z.infer<typeof LocalOpAiModelsSuccessSchema>;
+
+export const AI_TRANSFORM_ACTIONS = [
+  'clarify',
+  'improve',
+  'concise',
+  'fix-grammar',
+  'longer',
+  'friendly-tone',
+  'professional-tone',
+  'summarize',
+  'custom',
+] as const;
+export type AiTransformAction = (typeof AI_TRANSFORM_ACTIONS)[number];
+
+export const LocalOpAiTransformRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema.optional(),
+    model: z.string().optional(),
+    action: z.enum(AI_TRANSFORM_ACTIONS),
+    instruction: z.string().optional(),
+    selection: z.string().min(1),
+    docContext: z.string().optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiTransformRequest = z.infer<typeof LocalOpAiTransformRequestSchema>;
+
+export const LocalOpAiSuggestTagsRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema.optional(),
+    model: z.string().optional(),
+    docMarkdown: z.string(),
+    existingTags: z.array(z.string()).optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiSuggestTagsRequest = z.infer<typeof LocalOpAiSuggestTagsRequestSchema>;

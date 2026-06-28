@@ -32,3 +32,6 @@ blob-report/
 .env
 .env.local
 .env.*.local
+
+# Local runtime state
+.ok/local/

@@ -130,6 +130,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .map((l) => l.path.join('.'))
       .sort();
     expect(userStrict).toEqual([
+      'ai.defaultProvider',
+      'ai.providers',
       'appearance.preview.autoOpen',
       'appearance.theme',
       'editor.wordWrap',
@@ -163,6 +165,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(projectLocalStrict).toEqual([
       'appearance.sidebar.showHiddenFiles',
       'autoSync.enabled',
+      'search.fullContent.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',
       'search.semantic.enabled',

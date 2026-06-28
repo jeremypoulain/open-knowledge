@@ -15,6 +15,7 @@ import { buildPatch } from './schema-walker';
 interface UseConfigFormResult {
   form: UseFormReturn<Config>;
   commitField: (name: FieldPath<Config>) => boolean;
+  commitFieldValue: (name: FieldPath<Config>, value: unknown) => boolean;
 }
 
 export function useConfigForm(binding: ConfigBinding): UseConfigFormResult {
@@ -30,8 +31,10 @@ export function useConfigForm(binding: ConfigBinding): UseConfigFormResult {
   }, [binding, form]);
 
   const commitField = (name: FieldPath<Config>): boolean => runCommit(form, binding, name);
+  const commitFieldValue = (name: FieldPath<Config>, value: unknown): boolean =>
+    runCommitValue(form, binding, name, value);
 
-  return { form, commitField };
+  return { form, commitField, commitFieldValue };
 }
 
 export type ApplyExternalUpdateForm<T extends Config = Config> = Pick<UseFormReturn<T>, 'reset'>;
@@ -62,6 +65,15 @@ export function runCommit<T extends Config = Config>(
   name: FieldPath<T>,
 ): boolean {
   const value = form.getValues(name);
+  return runCommitValue(form, binding, name, value);
+}
+
+export function runCommitValue<T extends Config = Config>(
+  form: RunCommitForm<T>,
+  binding: RunCommitBinding,
+  name: FieldPath<T>,
+  value: unknown,
+): boolean {
   const patch = buildPatch(splitFieldPath(name), value) as ConfigPatch;
   const result = binding.patch(patch);
   if (result.ok) {

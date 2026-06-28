@@ -6,8 +6,8 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { useRef, useState } from 'react';
 import { Separator } from '@/components/ui/separator';
 import { getFindReplaceState } from '../find-replace/tiptap-find-replace-extension';
+import { AiMenuBubbleButton } from './AiMenuBubbleButton';
 import { BlockTypeSelector } from './BlockTypeSelector';
-import { EditWithAiBubbleButton } from './EditWithAiBubbleButton';
 import { FileBubbleButtons, isFileNodeSelected } from './FileBubbleButtons';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
 import { ImageAlignButtons, isImageNodeSelected } from './ImageAlignButtons';
@@ -108,8 +108,8 @@ export function BubbleMenuBar({
           <Separator orientation="vertical" className="mx-0.5 h-5 data-vertical:self-center" />
           <LinkEditPopover key={`${tooltipKey}-link`} editor={editor} />
           <FootnoteBubbleButton key={`${tooltipKey}-footnote`} editor={editor} />
-          <EditWithAiBubbleButton
-            key={`${tooltipKey}-edit-ai`}
+          <AiMenuBubbleButton
+            key={`${tooltipKey}-ai-menu`}
             editor={editor}
             shortcutEnabled={shortcutEnabled}
           />
