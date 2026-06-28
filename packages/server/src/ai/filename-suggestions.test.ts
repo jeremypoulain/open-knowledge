@@ -19,7 +19,7 @@ describe('sanitizeFilenameBase', () => {
   });
 
   test('caps the length without a trailing hyphen', () => {
-    const out = sanitizeFilenameBase('a'.repeat(40) + ' ' + 'b'.repeat(40), 10);
+    const out = sanitizeFilenameBase(`${'a'.repeat(40)} ${'b'.repeat(40)}`, 10);
     expect(out).toBe('aaaaaaaaaa');
   });
 
