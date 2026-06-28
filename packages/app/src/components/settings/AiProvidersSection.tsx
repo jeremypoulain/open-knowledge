@@ -7,7 +7,17 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, Minus } from 'lucide-react';
-import { useEffect, useEffectEvent, useState } from 'react';
+import { type ComponentType, type SVGProps, useEffect, useEffectEvent, useState } from 'react';
+import { ClaudeIcon } from '@/components/icons/claude';
+import { GeminiIcon } from '@/components/icons/gemini';
+import { GroqIcon } from '@/components/icons/groq';
+import { MistralIcon } from '@/components/icons/mistral';
+import { NvidiaIcon } from '@/components/icons/nvidia';
+import { OllamaIcon } from '@/components/icons/ollama';
+import { OpenAIIcon } from '@/components/icons/openai';
+import { OpenCodeIcon } from '@/components/icons/opencode';
+import { OpenRouterIcon } from '@/components/icons/openrouter';
+import { ZaiIcon } from '@/components/icons/zai';
 import type { FieldPath, UseFormReturn } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -23,6 +33,21 @@ import { useAiStatus } from '@/hooks/use-ai-status';
 import { type AiKeyTransport, httpAiKeyTransport } from '@/lib/transports/ai-key-transport';
 import { cn } from '@/lib/utils';
 import { useConfigForm } from './use-config-form';
+
+const PROVIDER_ICONS: Partial<Record<AiProviderId, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  anthropic: ClaudeIcon,
+  openai: OpenAIIcon,
+  gemini: GeminiIcon,
+  groq: GroqIcon,
+  openrouter: OpenRouterIcon,
+  mistral: MistralIcon,
+  'ollama-local': OllamaIcon,
+  'ollama-cloud': OllamaIcon,
+  'nvidia-nim': NvidiaIcon,
+  zai: ZaiIcon,
+  'opencode-zen': OpenCodeIcon,
+  'opencode-go': OpenCodeIcon,
+};
 
 interface AiProvidersSectionProps {
   binding: ConfigBinding;
@@ -109,11 +134,17 @@ export function AiProvidersSection({ binding, transport }: AiProvidersSectionPro
                 <Trans>None</Trans>
               </span>
             </SelectItem>
-            {AI_VISIBLE_PROVIDERS.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.label}
-              </SelectItem>
-            ))}
+            {AI_VISIBLE_PROVIDERS.map((p) => {
+              const Icon = PROVIDER_ICONS[p.id];
+              return (
+                <SelectItem key={p.id} value={p.id}>
+                  <span className="flex items-center gap-1.5">
+                    {Icon ? <Icon className="size-4 shrink-0" aria-hidden="true" /> : null}
+                    {p.label}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -154,6 +185,7 @@ function ProviderCard({
 }: ProviderCardProps) {
   const { t } = useLingui();
   const def = getAiProvider(provider);
+  const Icon = PROVIDER_ICONS[provider];
   const desc = status?.providers[provider];
   const present = desc?.present ?? false;
   const [keyInput, setKeyInput] = useState('');
@@ -243,13 +275,26 @@ function ProviderCard({
           className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
         >
           <span className="flex items-center gap-2 min-w-0">
-            <span
-              className={cn(
-                'size-2 shrink-0 rounded-full',
-                present ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+            <span className="relative shrink-0">
+              {Icon ? (
+                <Icon className="size-4" aria-hidden="true" />
+              ) : (
+                <span
+                  className={cn(
+                    'block size-4 rounded-full',
+                    present ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+                  )}
+                  aria-hidden="true"
+                />
               )}
-              aria-hidden="true"
-            />
+              <span
+                className={cn(
+                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-background',
+                  present ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+                )}
+                aria-hidden="true"
+              />
+            </span>
             <span className="sr-only">{present ? t`Configured` : t`Not configured`}</span>
             <span className="text-sm font-medium truncate">{def.label}</span>
             <span
