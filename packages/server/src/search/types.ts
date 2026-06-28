@@ -18,7 +18,9 @@ export type Locator =
   | { kind: 'page'; page: number }
   | { kind: 'slide'; slide: number }
   | { kind: 'sheet'; sheet: string }
-  | { kind: 'section'; section: string };
+  | { kind: 'section'; section: string }
+  /** A synthetic segment holding the file's name/path so it's searchable by name. */
+  | { kind: 'name' };
 
 /** One indexable unit of text plus its location within the source file. */
 export interface Segment {

@@ -126,7 +126,8 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
     expect(results[0].snippet).toContain('budget');
 
     const status = await service.status();
-    expect(status).toMatchObject({ enabled: true, installed: true, ready: true, docCount: 2 });
+    // 2 slide segments + 1 synthetic name segment.
+    expect(status).toMatchObject({ enabled: true, installed: true, ready: true, docCount: 3 });
     expect(status.dirty).toBe(false);
 
     // Advancing the file-index generation marks the index dirty.
@@ -159,7 +160,8 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
       getFileIndexGeneration: () => 1,
     });
     const status = await restarted.status();
-    expect(status).toMatchObject({ ready: true, docCount: 1, dirty: false });
+    // 1 body segment + 1 synthetic name segment.
+    expect(status).toMatchObject({ ready: true, docCount: 2, dirty: false });
     // The last-indexed timestamp survives the restart (no rebuild happened).
     expect(status.lastIndexedAt).toBe(firstStatus.lastIndexedAt);
 
@@ -193,6 +195,54 @@ describe('createFullContentSearchService (fake bm25-turbo CLI)', () => {
       locator: { kind: 'line', line: 3 },
     });
     expect(results[0]?.snippet).toContain('envKeyFor');
+  });
+
+  test('matches a file by name when the body has no matching term', async () => {
+    const notePath = join(dir, 'quarterly-budget.md');
+    // Body deliberately lacks the word "quarterly" — only the filename has it.
+    await writeFile(notePath, 'lorem ipsum dolor sit amet');
+    // body → id 0, synthetic name segment → id 1. Match the name segment.
+    await writeFile(hitsPath, '[{"id":1,"score":4.0}]');
+
+    const service = createFullContentSearchService({
+      isEnabled: () => true,
+      indexDir: join(dir, 'name-idx'),
+      getAllFilesIndex: () => new Map([['quarterly-budget.md', fileEntry(notePath)]]),
+      getFileIndexGeneration: () => 1,
+    });
+
+    const results = await service.search('quarterly', 10);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      path: 'quarterly-budget.md',
+      title: 'quarterly-budget.md',
+      locator: { kind: 'name' },
+    });
+    // A name match resolves to the whole file — no body snippet.
+    expect(results[0]?.snippet).toBeUndefined();
+  });
+
+  test('makes a binary file findable by name (no extractable body)', async () => {
+    const imgPath = join(dir, 'roadmap-diagram.png');
+    await writeFile(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+    // The binary yields no body segments, so the name segment is the only doc → id 0.
+    await writeFile(hitsPath, '[{"id":0,"score":3.0}]');
+
+    const service = createFullContentSearchService({
+      isEnabled: () => true,
+      indexDir: join(dir, 'binary-idx'),
+      getAllFilesIndex: () => new Map([['roadmap-diagram.png', fileEntry(imgPath)]]),
+      getFileIndexGeneration: () => 1,
+    });
+
+    const results = await service.search('roadmap', 10);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      path: 'roadmap-diagram.png',
+      title: 'roadmap-diagram.png',
+      locator: { kind: 'name' },
+    });
+    expect((await service.status()).docCount).toBe(1);
   });
 
   test('marks a persisted index dirty when a file changed while offline', async () => {

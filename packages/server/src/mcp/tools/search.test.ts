@@ -105,7 +105,7 @@ describe('search MCP tool — registration', () => {
     expect(DESCRIPTION.toLowerCase()).toContain('in parallel');
   });
 
-  test('inputSchema exposes query, intent, scopes, limit, semantic, cwd', () => {
+  test('inputSchema exposes query, engine, intent, scopes, limit, semantic, cwd', () => {
     const { server, registered } = makeFakeServer();
     register(server, {
       resolveCwd: async () => '/tmp/proj',
@@ -115,6 +115,7 @@ describe('search MCP tool — registration', () => {
     const tool = expectOneRegisteredTool(registered);
     expect(Object.keys(tool.options.inputSchema).sort()).toEqual([
       'cwd',
+      'engine',
       'intent',
       'limit',
       'query',
@@ -213,6 +214,89 @@ describe('search MCP tool — happy path', () => {
       fullText: 1.2,
       recency: 23.5,
     });
+  });
+
+  test("engine:'full_content' routes to POST /api/search/full and maps BM25 rows", async () => {
+    const captured: { url?: string; init?: RequestInit } = {};
+    globalThis.fetch = mock(async (url: string, init?: RequestInit) => {
+      captured.url = String(url);
+      captured.init = init;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          query: 'circle hook',
+          ready: true,
+          elapsedMs: 2.1,
+          results: [
+            {
+              kind: 'file',
+              path: 'logs/edmonds-2026-05-01',
+              title: 'edmonds-2026-05-01 — line 42',
+              score: 8.3,
+              snippet: '…rigged it as live bait on a circle-hook rig…',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch;
+
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+    const tool = expectOneRegisteredTool(registered);
+    const result = await tool.handler({
+      query: 'circle hook',
+      engine: 'full_content',
+      limit: 5,
+      cwd: '/tmp/proj',
+    });
+
+    expect(result.isError ?? false).toBe(false);
+    expect(captured.url).toBe('http://localhost:1234/api/search/full');
+    const body = JSON.parse(String(captured.init?.body)) as Record<string, unknown>;
+    expect(body).toEqual({ query: 'circle hook', limit: 5 });
+
+    const structured = result.structuredContent as {
+      intent: string;
+      resultCount: number;
+      results: Array<{
+        kind: string;
+        path: string;
+        docName: string;
+        title: string | null;
+        score: number;
+        signals: { lexical: number; fullText: number; recency: number };
+        snippet?: string;
+      }>;
+    };
+    expect(structured.intent).toBe('full_content');
+    expect(structured.resultCount).toBe(1);
+    expect(structured.results[0]?.kind).toBe('file');
+    expect(structured.results[0]?.docName).toBe('logs/edmonds-2026-05-01');
+    expect(structured.results[0]?.score).toBe(8.3);
+    // BM25 is a pure body signal — score flows into fullText only.
+    expect(structured.results[0]?.signals).toEqual({ lexical: 0, fullText: 8.3, recency: 0 });
+    expect(structured.results[0]?.snippet).toContain('circle-hook');
+  });
+
+  test("engine:'full_content' reports an actionable error when the engine is off / not ready", async () => {
+    mockFetchOk({ ok: true, query: 'q', ready: false, results: [], elapsedMs: 0.1 });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+    const tool = expectOneRegisteredTool(registered);
+    const result = await tool.handler({ query: 'q', engine: 'full_content', cwd: '/tmp/proj' });
+    expect(result.isError).toBe(true);
+    const text = result.content?.[0]?.text ?? '';
+    expect(text).toContain('opt-in');
+    expect(text).toContain('Settings');
   });
 
   test("default intent is 'full_text' when caller omits it (D4)", async () => {

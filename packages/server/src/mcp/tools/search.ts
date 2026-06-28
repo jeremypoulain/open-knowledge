@@ -23,13 +23,16 @@ export const DESCRIPTION = [
   '',
   'When semantic search is enabled for the workspace (an opt-in setting with an API key), an embeddings signal is additionally fused into `full_text` ranking, surfacing conceptually-related pages that share no keywords. This tool opts in by default; the `semantic` block in the response reports coverage. Note: with semantic enabled, the query and matching page content are sent to the configured embeddings provider (content egress). Set `semantic: false` to force pure-lexical ranking for a call.',
   '',
+  'The `full_content` engine (`engine: "full_content"`) is a second, opt-in BM25 index over the FULL body of EVERY non-binary file — including text extracted from PDF, Word, Excel, and PowerPoint — so it is more exhaustive for body content than the default `index` engine (which reads body content for markdown only). Trade-offs: no title/recency/semantic signals (pure BM25 over body text), and it must be enabled for the workspace (Settings → Search) — if it is off or still building, the tool says so. Paginated/structured hits carry a page/slide/sheet/section locator in the title. `intent`, `scopes`, and `semantic` do not apply to this engine.',
+  '',
   'Returns scored `page`, `folder`, and name-only `file` hits, each with a `signals` breakdown (lexical / fullText / recency / vector); markdown `page` hits also carry a body snippet (`file` hits never do — name-only). `exec`-grep covers every content occurrence and needs no server.',
   '',
   'Cold start: right after the server boots, the response may carry `ready: false` with an empty `results` while the index is still building. That empty set is NOT authoritative — wait ~2-3 seconds, then retry (agents have no built-in delay, so do not retry in immediate succession). If it is still `ready: false` after 2-3 retries (e.g. a very large workspace), fall back to `exec("grep ...")` rather than polling further. Once `ready` is true/omitted the results are complete.',
   '',
   '**Parameters:**',
   '- `query` — Free-form; tokenized across title, name, path segments, and (with `full_text`) body.',
-  '- `intent` (optional) — `omnibar` searches title/path/folders only (fast); `full_text` includes body. Default `full_text`.',
+  '- `engine` (optional) — `index` (default, the cmd-K engine) or `full_content` (opt-in BM25 over every file body, incl. PDF/Office text — more exhaustive).',
+  '- `intent` (optional) — `omnibar` searches title/path/folders only (fast); `full_text` includes body. Default `full_text`. (Ignored when `engine: "full_content"`.)',
   '- `scopes` (optional) — Result scope: `page` | `folder` | `file` | `content`. Defaults derive from `intent`.',
   '- `limit` (optional) — Max rows; default 20, max 100.',
   '- `semantic` (optional) — Set `false` to force pure-lexical ranking even when semantic search is enabled. Omit to use semantic when available.',
@@ -45,9 +48,16 @@ interface SearchDeps {
 
 const SCOPE_VALUES = ['page', 'folder', 'content', 'file'] as const;
 const INTENT_VALUES = ['omnibar', 'full_text'] as const;
+const ENGINE_VALUES = ['index', 'full_content'] as const;
 
 const InputSchema = {
   query: z.string().describe('Search query — title, path, or body terms.'),
+  engine: z
+    .enum(ENGINE_VALUES)
+    .optional()
+    .describe(
+      "'index' (default) = the fast cmd-K engine (names/paths for all files, body for markdown, + optional semantic). 'full_content' = the opt-in BM25 engine over the FULL body of every non-binary file, incl. text extracted from PDF/Office docs — more exhaustive for body content, but must be enabled for the workspace and has no title/recency/semantic signals. 'intent', 'scopes', and 'semantic' are ignored for this engine.",
+    ),
   intent: z
     .enum(INTENT_VALUES)
     .optional()
@@ -145,6 +155,24 @@ interface SearchResultRow {
   previewUrlSource?: PreviewUrlSource;
 }
 
+interface FullSearchApiRow {
+  kind?: 'file';
+  path?: string;
+  title?: string;
+  score?: number;
+  snippet?: string;
+}
+
+interface FullSearchApiResponse {
+  ok: boolean;
+  error?: string;
+  query?: string;
+  ready?: boolean;
+  elapsedMs?: number;
+  results?: FullSearchApiRow[];
+  [key: string]: unknown;
+}
+
 interface SearchSemanticStatus {
   capable: boolean;
   applied: boolean;
@@ -237,6 +265,7 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
     },
     async (args: {
       query: string;
+      engine?: (typeof ENGINE_VALUES)[number];
       intent?: (typeof INTENT_VALUES)[number];
       scopes?: Array<(typeof SCOPE_VALUES)[number]>;
       limit?: number;
@@ -259,8 +288,61 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
           );
         }
 
-        const intent = args.intent ?? 'full_text';
         const limit = args.limit ?? 20;
+
+        // Opt-in BM25 engine: exhaustive over every file body (incl. PDF/Office
+        // text). Routed to the separate `/api/search/full` endpoint; `intent`,
+        // `scopes`, and `semantic` do not apply here.
+        if ((args.engine ?? 'index') === 'full_content') {
+          const full = (await httpPost(url, '/api/search/full', {
+            query: args.query,
+            limit,
+          })) as FullSearchApiResponse;
+          if (!full.ok) return textResult(`Error: ${full.error}`, true);
+          if (!full.ready) {
+            return textResult(
+              `Full-content (BM25) search is unavailable for "${args.query}" — it is an opt-in engine that is currently disabled or still building for this workspace. Enable it in Settings → Search (it requires the \`bm25-turbo\` CLI), or use \`engine: "index"\` (default) / \`exec("grep ...")\` instead.`,
+              true,
+            );
+          }
+          const { resolve } = await buildListResolver({ config, resolveCwd: async () => cwd }, cwd);
+          const rows: SearchResultRow[] = (full.results ?? []).flatMap((row) => {
+            if (typeof row.path !== 'string') return [];
+            const docName = docNameFromPath(row.path);
+            const resolved = resolve(docName);
+            const score = typeof row.score === 'number' ? row.score : 0;
+            return [
+              {
+                kind: 'file' as const,
+                path: row.path,
+                docName,
+                title: row.title ?? null,
+                score,
+                // BM25 is a pure body full-text signal — no title/recency/vector.
+                signals: { lexical: 0, fullText: score, recency: 0 },
+                ...(row.snippet ? { snippet: row.snippet } : {}),
+                previewUrl: resolved?.url ?? null,
+                ...(resolved ? { previewUrlSource: resolved.source } : {}),
+              },
+            ];
+          });
+          const structured: SearchStructuredResult = {
+            cwd,
+            query: args.query,
+            intent: 'full_content',
+            resultCount: rows.length,
+            results: rows,
+            elapsedMs: typeof full.elapsedMs === 'number' ? full.elapsedMs : null,
+          };
+          const header = `## Full-content (BM25) results for "${args.query}" (${rows.length} hit${rows.length === 1 ? '' : 's'})`;
+          const text =
+            rows.length === 0
+              ? `No full-content matches for "${args.query}".`
+              : `${header}\n\n${formatResultsBlock(rows)}`;
+          return textPlusStructured(text, structured);
+        }
+
+        const intent = args.intent ?? 'full_text';
         const body: Record<string, unknown> = {
           query: args.query,
           intent,
