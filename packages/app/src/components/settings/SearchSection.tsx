@@ -325,7 +325,12 @@ function FullContentStatusPanel({
           <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-900">
             bm25-turbo
           </code>{' '}
-          CLI wasn't found on your PATH. Install it, then rebuild the index.
+          CLI wasn't found on your PATH. Install it with{' '}
+          <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-900">
+            cargo install --locked bm25-turbo-cli
+          </code>{' '}
+          (the <code className="font-mono text-xs">--locked</code> flag is required — see the note
+          below), then rebuild the index.
         </Trans>
       </div>
     );

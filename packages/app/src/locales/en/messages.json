@@ -176,11 +176,14 @@
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
+    "4CoPJY": ["Rebuilding the full content index"],
     "4Gz2wC": ["Failed to upload file"],
     "4KmEoC": ["Hotkeys"],
     "4NC2Ym": ["Move to the next or previous table cell."],
     "4PYsOz": ["Hide Files (", ["sidebarShortcutLabel"], ")"],
+    "4S5s2e": ["Disable full content search"],
     "4Sxexw": ["Source undo or redo"],
+    "4T1UFQ": ["Rebuild index"],
     "4TzU0n": ["Initialize"],
     "4XL6N4": [
       "Detected from the editors this project is set up for. Adjust to control where every skill installs."
@@ -431,6 +434,7 @@
     "AqnqMJ": ["API key set"],
     "ArBWJf": ["Undo last edit"],
     "AtBdnD": ["Couldn't delete skill: ", ["error"]],
+    "B0jZgp": ["Not indexed yet — rebuild to enable \"All files\" search."],
     "B11p-O": ["Edit markdown link"],
     "B2DrPb": ["Auto-save"],
     "B2Srgd": [["packName"], " skill installed."],
@@ -456,6 +460,7 @@
     ],
     "BGHHtQ": ["Single page"],
     "BH56dn": ["Custom display text"],
+    "BNHZHM": ["Search inside all files"],
     "BQKHuL": ["Restart terminal"],
     "BQu9Pg": ["Symlink"],
     "BY-g4_": ["Add pattern"],
@@ -592,6 +597,7 @@
       "</0> — the parent of your new folder, because it contains a <1>.git</1> folder (one project per git repo)."
     ],
     "FEr96N": ["Theme"],
+    "FMXwbX": ["Rebuilding"],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FOyCTr": [
@@ -739,6 +745,9 @@
     "KH5bQi": [
       "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
     ],
+    "KIIIUi": [
+      "On — an \"All files\" mode appears in search. Requires the <0>bm25-turbo</0> CLI on your PATH."
+    ],
     "KIIamL": [
       "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
     ],
@@ -768,6 +777,7 @@
     "KsAPaB": ["This branch is checked out in:"],
     "KszKI_": ["Skill level"],
     "KujtjC": ["Find"],
+    "KyxWVj": ["Off — search covers page names and markdown bodies only."],
     "L-rMC9": ["Reset to default"],
     "L1ZE3M": ["Document statistics"],
     "L3CEC1": ["this item"],
@@ -821,6 +831,7 @@
     ],
     "M5mfAe": ["Add tag"],
     "M9597s": ["Preparing share URL..."],
+    "M9WAOp": ["Type a query, then press ↵ to search inside every file."],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MGb89P": [
       "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -881,6 +892,7 @@
     "Nn4GgW": ["Will be created as <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
     "NpC29w": ["Create a new list item from the current list item."],
+    "Ntkz-6": ["Full content search"],
     "Nu4DdT": ["Sync"],
     "Nu4oKW": ["Description"],
     "NuH1jp": ["Public repository"],
@@ -906,6 +918,7 @@
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
     "OTF92M": ["Label <0>(optional display text)</0>"],
+    "OTkA1n": ["Index all file contents"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OX2Neh": ["Inline code"],
     "OYnx7O": ["Path cannot start with \"/\""],
@@ -1002,6 +1015,7 @@
     "RfaEio": ["Toggle source comment"],
     "RgbKEe": ["You don't have access to this repository."],
     "Rj01Fz": ["Links"],
+    "RjueK9": ["Searching all files"],
     "RlCInP": ["Slash commands"],
     "RlLl3G": ["Actions for ", ["0"]],
     "RmBY0A": ["No git remote"],
@@ -1018,6 +1032,7 @@
     "SFN6dN": ["Heading 3"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
+    "SUuynl": ["Failed to enable full content search — ", ["0"]],
     "SXCSQd": ["Copied path"],
     "SYfHmN": ["Unpin tab"],
     "Sc1bKE": [
@@ -1059,6 +1074,7 @@
     "U8CD-l": ["Copy full path, No workspace"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
+    "UHPBeC": ["Indexed ", ["0"], " segments", ["1"], "."],
     "UL8A9w": ["Tag"],
     "UMrOy2": ["Skill \"", ["trimmedName"], "\" created"],
     "UPjaXD": ["Couldn't duplicate \"", ["0"], "\": ", ["1"]],
@@ -1084,6 +1100,7 @@
     "UfW9Kr": [
       "Your search queries and the full text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
+    "UilRJI": ["Full content search failed — press ↵ to retry"],
     "UkQGhd": ["Hide replace"],
     "Up2_7p": ["Copy full path"],
     "Uuj_R4": ["New from template"],
@@ -1225,6 +1242,7 @@
     "Z8KDox": ["Enter a folder name (e.g. brain)."],
     "Z8lGw6": ["Share"],
     "ZARuZJ": ["Couldn't load files"],
+    "ZBV_Q6": ["Enable full content search"],
     "ZBYKxv": [
       "Reverts every change this agent made to <0>",
       ["docName"],
@@ -1264,6 +1282,7 @@
       "</1>."
     ],
     "_BthEY": ["Open in ", ["shareBranch"]],
+    "_Fgh-v": ["Showing results for \"", ["fullContentResultsLabel"], "\""],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
     "_QwkMu": ["No matching paths"],
@@ -1364,6 +1383,7 @@
     "cuA8QW": ["Organize specs"],
     "d2uTPx": ["Server error (HTTP ", ["status"], ")"],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
+    "d8aBBM": ["Failed to disable full content search — ", ["0"]],
     "dD7NPy": ["Outline"],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
@@ -1373,6 +1393,7 @@
     ],
     "dNM58w": ["Claude Code (claude) isn't installed or on your PATH."],
     "dOHMA0": ["Failed to move"],
+    "dOmzuf": ["Indexing"],
     "dOxPd4": ["Footnote"],
     "dPOFid": ["Show or hide terminal"],
     "dTaauv": ["Reason: ", ["reason"]],
@@ -1417,11 +1438,15 @@
     "eneWvv": ["Draft"],
     "euc6Ns": ["Duplicate"],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
+    "exozQJ": [
+      "The <0>bm25-turbo</0> CLI wasn't found on your PATH. Install it with <1>cargo install --locked bm25-turbo-cli</1> (the <2>--locked</2> flag is required — see the note below), then rebuild the index."
+    ],
     "f1XQyZ": ["Move block"],
     "f65AOQ": ["Start from"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
     "fBHvBn": ["There's no project folder for this window, so a terminal can't start here."],
     "fBaTkM": ["Toggle the bottom terminal panel."],
+    "fFqGqh": ["Building the index — results may be incomplete."],
     "fG0X0e": ["Install ", ["brand"], " →"],
     "fIgqfQ": ["Reinstalling"],
     "fJgQHX": ["Failed to create file"],
@@ -1448,6 +1473,7 @@
       "> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
     ],
     "gBbxn_": ["Checking sign-in status"],
+    "gESe-m": ["Search \"", ["fullContentSubmitQuery"], "\" in all files"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
     "gITz7o": [
       "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -1566,6 +1592,7 @@
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
+    "jbU8St": ["Index out of date — files have changed since the last build."],
     "jdGUeI": ["Couldn't create template: ", ["error"]],
     "jerqF0": ["Loading branch state"],
     "jhtG3I": [" Your selection has been restored."],
@@ -1591,6 +1618,7 @@
     ],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
+    "kJr7K5": ["No files matched \"", ["fullContentQueryText"], "\"."],
     "kNqMMd": ["Folder"],
     "kPtvEH": ["The pack skill <0>", ["0"], "</0> will be (re)installed."],
     "kUn-CN": ["Sync off"],
@@ -1891,6 +1919,9 @@
     "shNd9t": ["Slash command menu"],
     "skf5Ix": ["Indent or outdent source editor lines."],
     "snrVQ7": ["probe failed"],
+    "soiHQu": [
+      "Search inside every file in this workspace — text, code, PDF, Word, Excel, and PowerPoint — using a local BM25 index. CPU-only; nothing leaves this computer. This setting applies only to this computer."
+    ],
     "ssuwjF": ["Branch"],
     "stlgky": [
       "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -1984,6 +2015,7 @@
     "vfWA_g": ["You picked ~/Desktop. OpenKnowledge will index everything on your desktop."],
     "vhAnzJ": ["Turn on semantic search?"],
     "viwC-K": ["Failed to remove project."],
+    "vnSeBv": ["Rebuild full content index"],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
@@ -2031,6 +2063,7 @@
     "xNyj3h": ["Reinstall for Claude Chat & Cowork"],
     "xOTzt5": ["just now"],
     "xSVO3J": ["What gets created"],
+    "xW76tz": ["Couldn't start the rebuild — is the bm25-turbo CLI installed?"],
     "xWEvuo": ["Ask AI"],
     "xXo8FT": ["Save failed: ", ["error"]],
     "xYMPyY": [

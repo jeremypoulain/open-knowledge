@@ -640,6 +640,7 @@ msgstr ""
 msgid "Agent configuration file"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr ""
@@ -928,6 +929,10 @@ msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Building the index — results may be incomplete."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -1778,6 +1783,10 @@ msgstr ""
 msgid "Couldn't send your prompt — please try again."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Couldn't start the rebuild — is the bm25-turbo CLI installed?"
+msgstr ""
+
 #. placeholder {0}: result.error
 #: src/components/skill-actions.tsx
 msgid "Couldn't uninstall skill: {0}"
@@ -2053,6 +2062,10 @@ msgstr ""
 
 #: src/components/TimelinePanel.tsx
 msgid "Diff unavailable"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Disable full content search"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -2346,6 +2359,10 @@ msgstr ""
 msgid "Enable auto-sync"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Enable full content search"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Enable git auto-sync"
 msgstr ""
@@ -2489,6 +2506,11 @@ msgstr ""
 msgid "Failed to delete property"
 msgstr ""
 
+#. placeholder {0}: humanFormat(result.error)
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to disable full content search — {0}"
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "Failed to disable semantic search — {detail}"
 msgstr ""
@@ -2499,6 +2521,11 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Failed to duplicate path"
+msgstr ""
+
+#. placeholder {0}: humanFormat(result.error)
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to enable full content search — {0}"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -2840,6 +2867,14 @@ msgstr ""
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Full content search"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Full content search failed — press ↵ to retry"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr ""
@@ -3124,7 +3159,25 @@ msgid "Indented blockquote for citations."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+msgid "Index all file contents"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Index out of date — files have changed since the last build."
+msgstr ""
+
+#. placeholder {0}: docCount ?? 0
+#. placeholder {1}: lastIndexedAt ? ` · ${new Date(lastIndexedAt).toLocaleString()}` : ''
+#: src/components/settings/SearchSection.tsx
+msgid "Indexed {0} segments{1}."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -3905,6 +3958,10 @@ msgstr ""
 msgid "No file or folder selected"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "No files matched \"{fullContentQueryText}\"."
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "No files yet."
 msgstr ""
@@ -4108,6 +4165,10 @@ msgstr ""
 msgid "Not detected"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Not indexed yet — rebuild to enable \"All files\" search."
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Not installed"
@@ -4151,6 +4212,10 @@ msgid "Off"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+msgid "Off — search covers page names and markdown bodies only."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr ""
 
@@ -4168,6 +4233,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "On"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "On — an \"All files\" mode appears in search. Requires the <0>bm25-turbo</0> CLI on your PATH."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -4843,6 +4912,22 @@ msgstr ""
 msgid "Reason: {reason} ({osDetail})"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Rebuild full content index"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Rebuild index"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Rebuilding"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Rebuilding the full content index"
+msgstr ""
+
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
 msgstr ""
@@ -5286,6 +5371,10 @@ msgid "Search"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+msgid "Search \"{fullContentSubmitQuery}\" in all files"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr ""
 
@@ -5318,6 +5407,14 @@ msgid "Search files, folders, or commands"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+msgid "Search inside all files"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Search inside every file in this workspace — text, code, PDF, Word, Excel, and PowerPoint — using a local BM25 index. CPU-only; nothing leaves this computer. This setting applies only to this computer."
+msgstr ""
+
+#: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body (⌘F)."
 msgstr ""
 
@@ -5339,6 +5436,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Searching"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Searching all files"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -5629,6 +5730,10 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Showing results for \"{fullContentResultsLabel}\""
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -6073,6 +6178,10 @@ msgstr ""
 msgid "The {targetNoun} could not be opened — try navigating to it manually."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "The <0>bm25-turbo</0> CLI wasn't found on your PATH. Install it with <1>cargo install --locked bm25-turbo-cli</1> (the <2>--locked</2> flag is required — see the note below), then rebuild the index."
+msgstr ""
+
 #: src/components/TemplateForm.tsx
 msgid "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
 msgstr ""
@@ -6429,6 +6538,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Type"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Type a query, then press ↵ to search inside every file."
 msgstr ""
 
 #: src/components/CommandPalette.tsx
