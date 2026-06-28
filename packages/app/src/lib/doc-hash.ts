@@ -96,11 +96,38 @@ export function assetPathFromHash(hash: string): string | null {
   if (!hash.startsWith(ASSET_HASH_PREFIX)) return null;
   const encoded = hash.slice(ASSET_HASH_PREFIX.length);
   if (!encoded) return null;
+  const end = firstRouteDelimiterIndex(encoded);
+  const pathPart = end < 0 ? encoded : encoded.slice(0, end);
   try {
-    return encoded.split('/').map(decodeURIComponent).join('/');
+    return pathPart.split('/').map(decodeURIComponent).join('/');
   } catch {
-    return encoded;
+    return pathPart;
   }
+}
+
+/**
+ * The viewer fragment carried after an asset path, e.g. the `page=12` in
+ * `#/__asset__/notes/report.pdf#page=12`. Returned as-is (decoded) for
+ * `parsePdfAnchor`; `null` when the hash isn't an asset hash or has no fragment.
+ */
+export function assetAnchorFromHash(hash: string): string | null {
+  if (!hash.startsWith(ASSET_HASH_PREFIX)) return null;
+  const encoded = hash.slice(ASSET_HASH_PREFIX.length);
+  const fragment = encoded.indexOf('#');
+  if (fragment < 0) return null;
+  const anchor = encoded.slice(fragment + 1);
+  if (!anchor) return null;
+  try {
+    return decodeURIComponent(anchor);
+  } catch {
+    return anchor;
+  }
+}
+
+/** Build an asset hash with an optional viewer anchor (e.g. `page=12`). */
+export function hashFromAssetPathWithAnchor(assetPath: string, anchor?: string | null): string {
+  const base = hashFromAssetPath(assetPath);
+  return anchor ? `${base}#${encodeURIComponent(anchor)}` : base;
 }
 
 export function hashFromAssetPath(assetPath: string): string {

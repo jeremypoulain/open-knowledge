@@ -19,9 +19,17 @@ export interface WorkspaceEntry {
   bodyIndexed?: boolean;
 }
 
+export type FullContentLocator =
+  | { kind: 'page'; page: number }
+  | { kind: 'slide'; slide: number }
+  | { kind: 'sheet'; sheet: string }
+  | { kind: 'section'; section: string };
+
 export interface WorkspaceSearchEntry extends WorkspaceEntry {
   snippet?: string;
   score?: number;
+  /** For full-content (BM25) hits: which page/slide/sheet/section matched. */
+  locator?: FullContentLocator;
 }
 
 interface HighlightSegment {
@@ -273,6 +281,59 @@ export async function fetchWorkspaceSearchEntries(
   const entries = (payload.results ?? []).map(toWorkspaceSearchEntry).filter((entry) => !!entry);
 
   return { entries, truncated: payload.truncated === true, ready: payload.ready !== false };
+}
+
+interface FullContentSearchApiResponse {
+  ready?: boolean;
+  results?: Array<{
+    path?: string;
+    title?: string;
+    snippet?: string;
+    score?: number;
+    locator?: FullContentLocator;
+  }>;
+}
+
+/**
+ * Query the BM25 full-content engine (`/api/search/full`). Separate from the
+ * lexical/semantic `/api/search` path — used by the omnibar's "All files" mode.
+ */
+export async function fetchFullContentSearchEntries(
+  query: string,
+  options: { signal?: AbortSignal; limit?: number } = {},
+): Promise<WorkspaceSearchFetchResult> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return { entries: [], truncated: false, ready: true };
+
+  const response = await fetch('/api/search/full', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: normalizedQuery, limit: options.limit ?? API_SEARCH_LIMIT }),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as unknown;
+    throw new Error(parseApiError(body) ?? `Search failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as FullContentSearchApiResponse;
+  const entries: WorkspaceSearchEntry[] = (payload.results ?? [])
+    .filter((row) => typeof row.path === 'string')
+    .map((row) => {
+      const path = row.path as string;
+      return {
+        kind: 'file' as const,
+        path,
+        name: workspaceSearchBasename(path),
+        bodyIndexed: false,
+        ...(row.title && { title: row.title }),
+        ...(row.snippet && { snippet: row.snippet }),
+        ...(typeof row.score === 'number' && { score: row.score }),
+        ...(row.locator && { locator: row.locator }),
+      };
+    });
+
+  return { entries, truncated: false, ready: payload.ready !== false };
 }
 
 export function matchesCommandQuery(

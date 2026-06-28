@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
   anchorFromHash,
+  assetAnchorFromHash,
   assetPathFromHash,
   docNameFromHash,
   encodeShareTargetForHash,
   hashFromAssetPath,
+  hashFromAssetPathWithAnchor,
   hashFromDocName,
   hashFromFolderPath,
   hashFromSkillFile,
@@ -214,6 +216,19 @@ describe('asset hash helpers', () => {
 
   test('asset hashes do not parse as doc hashes', () => {
     expect(docNameFromHash(hashFromAssetPath('docs/photo.png'))).toBeNull();
+  });
+
+  test('a viewer anchor (e.g. page) round-trips and the path still resolves', () => {
+    const hash = hashFromAssetPathWithAnchor('docs/report.pdf', 'page=12');
+    expect(hash).toBe('#/__asset__/docs/report.pdf#page%3D12');
+    expect(assetPathFromHash(hash)).toBe('docs/report.pdf');
+    expect(assetAnchorFromHash(hash)).toBe('page=12');
+  });
+
+  test('no anchor yields a plain asset hash with no fragment', () => {
+    const hash = hashFromAssetPathWithAnchor('docs/report.pdf');
+    expect(hash).toBe('#/__asset__/docs/report.pdf');
+    expect(assetAnchorFromHash(hash)).toBeNull();
   });
 });
 

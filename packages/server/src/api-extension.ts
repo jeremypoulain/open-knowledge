@@ -311,6 +311,7 @@ import {
 } from './page-identity.ts';
 import { clearArmedPaneTarget, readArmedPaneTarget } from './pane-target.ts';
 import type { RecentlyRemovedDocs } from './recently-removed-docs.ts';
+import type { FullContentSearchService } from './search/bm25-full-search.ts';
 import { readServerLock } from './server-lock.ts';
 import {
   buildGitHubBlobUrl,
@@ -1788,6 +1789,7 @@ export interface ApiExtensionOptions {
   serializeDoc?: (docName: string) => string | null;
   evictManagedArtifactLkg?: (docName: string) => void;
   semanticSearch?: SemanticSearchService;
+  fullContentSearch?: FullContentSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
   embeddingsSecretsFile?: string;
 }
@@ -1883,6 +1885,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     serializeDoc,
     evictManagedArtifactLkg,
     semanticSearch,
+    fullContentSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
     ephemeral = false,
@@ -13259,6 +13262,152 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'semantic-status', method: 'GET', skipBodyParse: true },
   );
 
+  // --- Full-content (BM25) search: a second, opt-in engine over all file bodies.
+  const FullSearchLocatorSchema = z.union([
+    z.object({ kind: z.literal('page'), page: z.number() }),
+    z.object({ kind: z.literal('slide'), slide: z.number() }),
+    z.object({ kind: z.literal('sheet'), sheet: z.string() }),
+    z.object({ kind: z.literal('section'), section: z.string() }),
+  ]);
+  const FullSearchRequestSchema = z.looseObject({
+    query: z.string().optional(),
+    limit: z.number().optional(),
+  });
+  const FullSearchSuccessSchema = z.object({
+    query: z.string(),
+    ready: z.boolean(),
+    elapsedMs: z.number(),
+    results: z.array(
+      z.object({
+        kind: z.literal('file'),
+        path: z.string(),
+        title: z.string(),
+        score: z.number(),
+        snippet: z.string().optional(),
+        locator: FullSearchLocatorSchema.optional(),
+      }),
+    ),
+  });
+  const FullSearchStatusSchema = z.object({
+    enabled: z.boolean(),
+    installed: z.boolean(),
+    ready: z.boolean(),
+    indexing: z.boolean(),
+    dirty: z.boolean(),
+    docCount: z.number().nullable(),
+    lastIndexedAt: z.number().nullable(),
+  });
+  const FullSearchReindexSchema = z.object({
+    enabled: z.boolean(),
+    started: z.boolean(),
+    busy: z.boolean(),
+  });
+
+  const handleFullSearch = withValidation(
+    FullSearchRequestSchema,
+    async (_req, res, body) => {
+      const startedAt = performance.now();
+      const query = typeof body.query === 'string' ? body.query : '';
+      const limit = typeof body.limit === 'number' ? body.limit : undefined;
+      if (query.length > 200) {
+        errorResponse(
+          res,
+          400,
+          'urn:ok:error:invalid-request',
+          'Query is too long (max 200 chars).',
+          {
+            handler: 'search-full',
+          },
+        );
+        return;
+      }
+      try {
+        const enabled = fullContentSearch?.isEnabled() ?? false;
+        const results =
+          enabled && fullContentSearch ? await fullContentSearch.search(query, limit ?? 30) : [];
+        successResponse(
+          res,
+          200,
+          FullSearchSuccessSchema,
+          {
+            query,
+            ready: enabled,
+            results,
+            elapsedMs: Math.max(0, performance.now() - startedAt),
+          },
+          { handler: 'search-full' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Full-content search failed.',
+          {
+            handler: 'search-full',
+            cause: e,
+          },
+        );
+      }
+    },
+    { handler: 'search-full', method: 'POST' },
+  );
+
+  const handleFullSearchStatus = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const status = fullContentSearch
+          ? await fullContentSearch.status()
+          : {
+              enabled: false,
+              installed: false,
+              ready: false,
+              indexing: false,
+              dirty: false,
+              docCount: null,
+              lastIndexedAt: null,
+            };
+        successResponse(res, 200, FullSearchStatusSchema, status, {
+          handler: 'search-full-status',
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: 'search-full-status',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'search-full-status', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleFullSearchReindex = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const enabled = fullContentSearch?.isEnabled() ?? false;
+        const outcome =
+          enabled && fullContentSearch
+            ? fullContentSearch.reindex()
+            : { started: false, busy: false };
+        successResponse(
+          res,
+          200,
+          FullSearchReindexSchema,
+          { enabled, started: outcome.started, busy: outcome.busy },
+          { handler: 'search-full-reindex' },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to start reindex.', {
+          handler: 'search-full-reindex',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'search-full-reindex', method: 'POST' },
+  );
+
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/config': handleApiConfig,
     '/api/asset': handleAsset,
@@ -13287,6 +13436,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/skill/update': handleSkillUpdate,
     '/api/skill-targets': handleSkillTargets,
     '/api/search': handleSearch,
+    '/api/search/full': handleFullSearch,
+    '/api/search/full/status': handleFullSearchStatus,
+    '/api/search/full/reindex': handleFullSearchReindex,
     '/api/semantic-status': handleSemanticStatus,
     '/api/suggest-links': handleSuggestLinks,
     '/api/page-headings': handlePageHeadings,

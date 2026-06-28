@@ -38,6 +38,7 @@ import {
   isConfigDoc,
   isManagedArtifactDoc,
   isReservedForUserTree,
+  isSystemDoc,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
@@ -134,6 +135,8 @@ import {
   setRenameLogIndex,
   sweepLazyPopOrphans,
 } from './rename-log.ts';
+import { createFullContentSearchService } from './search/bm25-full-search.ts';
+import { readFullContentSearchEnabled } from './search/full-content-config.ts';
 import { acquireServerLock, releaseServerLock } from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
@@ -358,6 +361,19 @@ export function createServer(options: ServerOptions): ServerInstance {
     cacheDir: join(getLocalDir(projectDir), 'embeddings'),
     enabled: initialSemanticConfig.enabled,
     providerFingerprint: semanticProviderFingerprint(initialSemanticConfig),
+  });
+
+  const fullContentSearch = createFullContentSearchService({
+    isEnabled: () => readFullContentSearchEnabled(projectDir, { configHomedirOverride }),
+    indexDir: join(getLocalDir(projectDir), 'bm25'),
+    getAllFilesIndex: () => (watcher ? watcher.getAllFilesIndex() : new Map()),
+    getFileIndexGeneration: () => watcher?.getFileIndexGeneration() ?? 0,
+    shouldIndex: (docName) =>
+      !isSystemDoc(docName) &&
+      !isConfigDoc(docName) &&
+      !isManagedArtifactDoc(docName) &&
+      !docName.startsWith('.ok/'),
+    onWarn: (msg) => getLogger('full-search').warn({}, msg),
   });
 
   let loadedPrincipal: Principal | null = null;
@@ -742,6 +758,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         persistence.managedArtifactCtx.lkgCache.delete(docName);
       },
       semanticSearch,
+      fullContentSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       ephemeral,

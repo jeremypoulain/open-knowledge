@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingImage } from '@/components/ui/loading-image';
 import { dispatchAssetClick } from '@/editor/asset-dispatch';
 import { Pdf } from '@/editor/components/Pdf';
+import { assetAnchorFromHash } from '@/lib/doc-hash';
 
 interface AssetPreviewProps {
   assetPath: string;
@@ -30,10 +31,16 @@ export function AssetPreview({ assetPath, mediaKind }: AssetPreviewProps) {
   const effectiveMediaKind: InlineAssetMediaKind | null = forceText ? 'text' : mediaKind;
 
   if (effectiveMediaKind === 'pdf') {
+    // Deep-link support: a `#page=N` fragment on the asset hash (e.g. from a
+    // full-content search hit) opens the viewer scrolled to that page.
+    const anchor =
+      typeof window !== 'undefined'
+        ? (assetAnchorFromHash(window.location.hash) ?? undefined)
+        : undefined;
     return (
       <main className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
         <div className="min-h-0 flex-1 overflow-hidden">
-          <Pdf src={src} title={fileName} fillContainer />
+          <Pdf src={src} title={fileName} anchor={anchor} fillContainer />
         </div>
       </main>
     );

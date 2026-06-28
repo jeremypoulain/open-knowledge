@@ -264,6 +264,20 @@ export const ConfigSchema = z.looseObject({
           baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
           model: DEFAULT_EMBEDDINGS_MODEL,
         }),
+      fullContent: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              defaultScope: 'project-local',
+              description:
+                'Index the full body of every non-binary file under the workspace (text, code, and extracted text from PDF/Word/Excel/PowerPoint) into a local BM25 index, exposed as an "All files" search mode in the web UI. CPU-only — no embeddings/GPU. Requires the external `bm25-turbo` CLI on PATH. Content stays local; nothing is sent off-machine. Default OFF. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default(false),
+        })
+        .default({ enabled: false }),
     })
     .default({
       semantic: {
@@ -271,6 +285,7 @@ export const ConfigSchema = z.looseObject({
         baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
         model: DEFAULT_EMBEDDINGS_MODEL,
       },
+      fullContent: { enabled: false },
     }),
 });
 

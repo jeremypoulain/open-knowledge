@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config, ConfigBinding, SemanticIndexStatus } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { FullContentSearchStatus } from '@/hooks/use-full-content-search-status';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
@@ -48,6 +49,10 @@ function configWithSemanticEnabled(enabled: boolean): Config {
   return { search: { semantic: { enabled } } } as unknown as Config;
 }
 
+function configWithFullContentEnabled(enabled: boolean): Config {
+  return { search: { fullContent: { enabled } } } as unknown as Config;
+}
+
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
   const calls: unknown[] = [];
   const binding = {
@@ -65,6 +70,7 @@ function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
 }
 
 let mockStatus: SemanticIndexStatus | null = null;
+let mockFullContentStatus: FullContentSearchStatus | null = null;
 const originalFetch = global.fetch;
 
 beforeEach(() => {
@@ -72,10 +78,27 @@ beforeEach(() => {
   mockProjectLocalSynced = true;
   mockProjectLocalBinding = null;
   mockStatus = null;
-  global.fetch = (async () => ({
-    ok: true,
-    json: async () => mockStatus,
-  })) as unknown as typeof fetch;
+  mockFullContentStatus = null;
+  global.fetch = (async (input: string | URL | Request) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('/api/search/full/reindex')) {
+      return {
+        ok: true,
+        json: async () => ({ started: true, busy: false }),
+      } as Response;
+    }
+    if (url.includes('/api/search/full/status')) {
+      return {
+        ok: true,
+        json: async () => mockFullContentStatus,
+      } as Response;
+    }
+    return {
+      ok: true,
+      json: async () => mockStatus,
+    } as Response;
+  }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
@@ -313,5 +336,73 @@ describe('SearchSection', () => {
     await user.click(await screen.findByTestId('settings-search-confirm-enable'));
 
     expect(await screen.findByTestId('settings-search-confirm')).toBeDefined();
+  });
+
+  test('enabling full-content search updates the settings copy immediately and shows a settling state', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithFullContentEnabled(false);
+    mockFullContentStatus = {
+      enabled: false,
+      installed: true,
+      ready: false,
+      indexing: false,
+      dirty: false,
+      docCount: null,
+      lastIndexedAt: null,
+    };
+
+    render(<SearchSection />);
+
+    await user.click(screen.getByTestId('settings-fullsearch-toggle'));
+
+    expect(calls).toContainEqual({ search: { fullContent: { enabled: true } } });
+    expect(screen.getByTestId('settings-fullsearch-body').textContent).toContain(
+      'an "All files" mode appears in search',
+    );
+    expect(screen.getByTestId('settings-fullsearch-settling').textContent).toContain(
+      'Applying your change',
+    );
+  });
+
+  test('enabled full-content search shows CLI status and index metadata', async () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithFullContentEnabled(true);
+    mockFullContentStatus = {
+      enabled: true,
+      installed: true,
+      ready: true,
+      indexing: false,
+      dirty: false,
+      docCount: 42,
+      lastIndexedAt: Date.UTC(2026, 5, 27, 12, 0, 0),
+    };
+
+    render(<SearchSection />);
+
+    expect((await screen.findByTestId('settings-fullsearch-cli-status')).textContent).toContain(
+      'Installed on PATH',
+    );
+    expect(screen.getByTestId('settings-fullsearch-index-status').textContent).toContain('Ready');
+    expect(screen.getByTestId('settings-fullsearch-doc-count').textContent).toContain('42');
+    expect(screen.getByTestId('settings-fullsearch-last-indexed').textContent).not.toContain(
+      'Not yet indexed',
+    );
+  });
+
+  test('enabled full-content search shows an unreachable warning instead of spinning forever when status fetch fails', async () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithFullContentEnabled(true);
+    mockFullContentStatus = null;
+
+    render(<SearchSection />);
+
+    expect((await screen.findByTestId('settings-fullsearch-unreachable')).textContent).toContain(
+      "couldn't reach the local search server",
+    );
+    expect(screen.queryByTestId('settings-fullsearch-settling')).toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  FolderSearch,
   Hash,
   LayoutGrid,
   Loader2,
@@ -39,6 +40,7 @@ import {
 import {
   buildWorkspaceEntries,
   classifyOmnibarSearchHint,
+  fetchFullContentSearchEntries,
   fetchWorkspaceSearchEntries,
   matchesCommandQuery,
   SEMANTIC_RESULT_LIMIT,
@@ -73,10 +75,12 @@ import {
 } from '@/components/ui/command';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
+import { useFullContentSearchStatus } from '@/hooks/use-full-content-search-status';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
+import { useConfigContext } from '@/lib/config-provider';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
-import { hashFromDocName } from '@/lib/doc-hash';
+import { hashFromAssetPathWithAnchor, hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
@@ -250,6 +254,12 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [semanticStatus, setSemanticStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     'idle',
   );
+  const [isFullContentMode, setIsFullContentMode] = useState(false);
+  const [fullContentResults, setFullContentResults] = useState<WorkspaceSearchEntry[]>([]);
+  const [fullContentFiredQuery, setFullContentFiredQuery] = useState<string | null>(null);
+  const [fullContentStatus, setFullContentStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
   const [projectRecents, setProjectRecents] = useState<RecentProjectEntry[]>([]);
   const [recentNavigation, setRecentNavigation] = useState<OmnibarRecentEntry[]>([]);
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
@@ -268,6 +278,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const inputRef = useRef<HTMLInputElement>(null);
   const semanticAbortRef = useRef<AbortController | null>(null);
   const semanticTimerRef = useRef<number | null>(null);
+  const fullContentAbortRef = useRef<AbortController | null>(null);
+  const fullContentTimerRef = useRef<number | null>(null);
   const { activeDocName, activeTarget } = useDocumentContext();
   const {
     pages,
@@ -285,6 +297,14 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   });
   const semanticCapable =
     (semanticCapability?.enabled ?? false) && (semanticCapability?.keyPresent ?? false);
+  const { projectLocalConfig } = useConfigContext();
+  const configuredFullContentEnabled = projectLocalConfig?.search?.fullContent?.enabled ?? false;
+  const { status: fullContentStatusInfo } = useFullContentSearchStatus({
+    enabled: open,
+  });
+  const fullContentEnabled = fullContentStatusInfo?.enabled ?? configuredFullContentEnabled;
+  const fullContentCapable = fullContentEnabled && (fullContentStatusInfo?.installed ?? false);
+  const fullContentIndexing = fullContentStatusInfo?.indexing ?? false;
   const semanticIndexedCount = semanticCapability?.embedded ?? 0;
   const semanticTotalCount = semanticCapability?.total ?? 0;
   const semanticIndexing =
@@ -359,6 +379,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     setSemanticResults([]);
     setSemanticFiredQuery(null);
     setSemanticStatus('idle');
+    setIsFullContentMode(false);
+    fullContentAbortRef.current?.abort();
+    fullContentAbortRef.current = null;
+    if (fullContentTimerRef.current !== null) {
+      window.clearTimeout(fullContentTimerRef.current);
+      fullContentTimerRef.current = null;
+    }
+    setFullContentResults([]);
+    setFullContentFiredQuery(null);
+    setFullContentStatus('idle');
   }, [open, bridge, refreshInstallStates, t]);
 
   useEffect(() => {
@@ -367,11 +397,12 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   }, [query]);
 
   const knownTagNames = new Set(tagsList.map((tag) => tag.name));
-  const paletteMode = isSemanticMode
-    ? ({ kind: 'normal', query: deferredQuery } as const)
-    : parseTagPaletteQuery(deferredQuery, knownTagNames);
+  const paletteMode =
+    isSemanticMode || isFullContentMode
+      ? ({ kind: 'normal', query: deferredQuery } as const)
+      : parseTagPaletteQuery(deferredQuery, knownTagNames);
   const isTagMode = paletteMode.kind !== 'normal';
-  const inExclusiveMode = isTagMode || isSemanticMode;
+  const inExclusiveMode = isTagMode || isSemanticMode || isFullContentMode;
   const tagListQuery = paletteMode.kind === 'tag-list' ? paletteMode.query : '';
   const tagDocsName = paletteMode.kind === 'tag-docs' ? paletteMode.tagName : '';
   const semanticQueryText = query.trim();
@@ -385,6 +416,19 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     : null;
   const semanticSubmitQuery = semanticView?.submit?.query ?? '';
   const semanticResultsLabel = semanticView?.results.forQuery ?? '';
+  // The deliberate-submit view machinery is engine-agnostic — reuse it for the
+  // BM25 "All files" mode (shelling out per keystroke would be wasteful).
+  const fullContentQueryText = query.trim();
+  const fullContentView = isFullContentMode
+    ? computeSemanticModeView({
+        query: fullContentQueryText,
+        firedQuery: fullContentFiredQuery,
+        status: fullContentStatus,
+        resultCount: fullContentResults.length,
+      })
+    : null;
+  const fullContentSubmitQuery = fullContentView?.submit?.query ?? '';
+  const fullContentResultsLabel = fullContentView?.results.forQuery ?? '';
 
   useEffect(() => {
     if (!open || !isTagMode) return;
@@ -726,7 +770,102 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     }
   }
 
+  function resetFullContentState() {
+    fullContentAbortRef.current?.abort();
+    fullContentAbortRef.current = null;
+    if (fullContentTimerRef.current !== null) {
+      window.clearTimeout(fullContentTimerRef.current);
+      fullContentTimerRef.current = null;
+    }
+    setFullContentResults([]);
+    setFullContentFiredQuery(null);
+    setFullContentStatus('idle');
+  }
+
+  function enterFullContentMode() {
+    setIsFullContentMode(true);
+    if (isSemanticMode) {
+      setIsSemanticMode(false);
+      resetSemanticState();
+    }
+    if (query.startsWith(TAG_QUERY_PREFIX)) setQuery(query.slice(TAG_QUERY_PREFIX.length));
+    resetFullContentState();
+    inputRef.current?.focus();
+  }
+
+  function exitFullContentMode() {
+    setIsFullContentMode(false);
+    setQuery('');
+    resetFullContentState();
+    inputRef.current?.focus();
+  }
+
+  function fireFullContentSearch(raw: string) {
+    const q = raw.trim();
+    if (!q) return;
+    fullContentAbortRef.current?.abort();
+    if (fullContentTimerRef.current !== null) window.clearTimeout(fullContentTimerRef.current);
+    const controller = new AbortController();
+    fullContentAbortRef.current = controller;
+    setFullContentStatus('loading');
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      setFullContentStatus('error');
+    }, COMMAND_PALETTE_SEARCH_TIMEOUT_MS);
+    fullContentTimerRef.current = timeout;
+    void fetchFullContentSearchEntries(q, { signal: controller.signal })
+      .then(({ entries }) => {
+        if (fullContentTimerRef.current === timeout) {
+          window.clearTimeout(timeout);
+          fullContentTimerRef.current = null;
+        }
+        if (fullContentAbortRef.current === controller) fullContentAbortRef.current = null;
+        setFullContentResults(entries);
+        setFullContentFiredQuery(q);
+        setFullContentStatus('success');
+      })
+      .catch((error: unknown) => {
+        window.clearTimeout(timeout);
+        if (fullContentTimerRef.current === timeout) fullContentTimerRef.current = null;
+        if (fullContentAbortRef.current === controller) fullContentAbortRef.current = null;
+        if (error instanceof Error && error.name === 'AbortError' && !timedOut) return;
+        console.debug('[full-content-search] fire failed', { timedOut, error });
+        setFullContentStatus('error');
+      });
+  }
+
+  function navigateToFullContentEntry(entry: WorkspaceSearchEntry) {
+    onOpenChange(false);
+    rememberNavigation(entry);
+    // PDF hits carry a page locator → deep-link the asset viewer to that page.
+    if (entry.locator?.kind === 'page' && entry.path.toLowerCase().endsWith('.pdf')) {
+      window.location.assign(hashFromAssetPathWithAnchor(entry.path, `page=${entry.locator.page}`));
+      return;
+    }
+    navigateToEntry(entry);
+  }
+
+  function onSearchInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    onSemanticInputKeyDown(e);
+    if (!isFullContentMode || e.key !== 'Enter') return;
+    if (fullContentView?.submit) {
+      e.preventDefault();
+      e.stopPropagation();
+      fireFullContentSearch(fullContentView.submit.query);
+    } else if (fullContentStatus === 'loading') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
   function onPaletteEscapeKeyDown(e: KeyboardEvent) {
+    if (isFullContentMode) {
+      e.preventDefault();
+      exitFullContentMode();
+      return;
+    }
     if (!isSemanticMode) return;
     e.preventDefault();
     exitSemanticMode();
@@ -751,9 +890,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           ref={inputRef}
           value={query}
           onValueChange={setQuery}
-          onKeyDown={onSemanticInputKeyDown}
+          onKeyDown={onSearchInputKeyDown}
           placeholder={
-            isSemanticMode ? t`Search by meaning` : t`Search files, folders, or commands`
+            isSemanticMode
+              ? t`Search by meaning`
+              : isFullContentMode
+                ? t`Search inside all files`
+                : t`Search files, folders, or commands`
           }
         />
         {/* Filter-pills row — Slack-style. Always visible so the
@@ -767,6 +910,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               if (isSemanticMode) {
                 setIsSemanticMode(false);
                 resetSemanticState();
+              }
+              if (isFullContentMode) {
+                setIsFullContentMode(false);
+                resetFullContentState();
               }
               setQuery(isTagMode ? '' : TAG_QUERY_PREFIX);
               inputRef.current?.focus();
@@ -806,6 +953,29 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               <Sparkles className="size-3.5" />
               <span>
                 <Trans>By meaning</Trans>
+              </span>
+            </button>
+          ) : null}
+          {/* Shown only when full content search is enabled + the bm25-turbo CLI
+              is installed. Enters an exclusive "All files" mode — a
+              deliberate-submit BM25 search over every file body. */}
+          {fullContentCapable ? (
+            <button
+              type="button"
+              onClick={() => (isFullContentMode ? exitFullContentMode() : enterFullContentMode())}
+              data-testid="command-palette-filter-fullcontent"
+              data-active={isFullContentMode}
+              aria-pressed={isFullContentMode}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                isFullContentMode
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-border bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              <FolderSearch className="size-3.5" />
+              <span>
+                <Trans>All files</Trans>
               </span>
             </button>
           ) : null}
@@ -903,6 +1073,92 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                         entry={entry}
                         disabled={semanticView.results.dimmed}
                         onSelect={() => navigateToEntry(entry)}
+                      />
+                    ))}
+                  </div>
+                </CommandGroup>
+              ) : null}
+            </>
+          ) : null}
+          {isFullContentMode && fullContentView ? (
+            <>
+              {fullContentIndexing ? (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 text-muted-foreground text-xs"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="command-palette-fullcontent-indexing"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <Trans>Building the index — results may be incomplete.</Trans>
+                </div>
+              ) : null}
+
+              {fullContentView.submit ? (
+                <CommandGroup>
+                  <CommandItem
+                    value="fullcontent-submit"
+                    onSelect={() => fireFullContentSearch(fullContentSubmitQuery)}
+                    data-testid="command-palette-fullcontent-submit"
+                  >
+                    {fullContentView.submit.kind === 'retry' ? (
+                      <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                        <FolderSearch />
+                        <Trans>Full content search failed — press ↵ to retry</Trans>
+                      </span>
+                    ) : (
+                      <>
+                        <FolderSearch />
+                        <span className="min-w-0 flex-1 truncate">
+                          <Trans>Search "{fullContentSubmitQuery}" in all files</Trans>
+                        </span>
+                        <CommandShortcut>↵</CommandShortcut>
+                      </>
+                    )}
+                  </CommandItem>
+                </CommandGroup>
+              ) : null}
+
+              {fullContentView.notice === 'empty' ? (
+                <CommandEmpty data-testid="command-palette-fullcontent-empty">
+                  <Trans>Type a query, then press ↵ to search inside every file.</Trans>
+                </CommandEmpty>
+              ) : null}
+              {fullContentView.notice === 'searching' ? (
+                <div
+                  className="flex items-center justify-center gap-2 py-6 text-muted-foreground text-sm"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="command-palette-fullcontent-searching"
+                >
+                  <Loader2 className="size-4 animate-spin" />
+                  <Trans>Searching all files</Trans>
+                </div>
+              ) : null}
+              {fullContentView.notice === 'no-results' ? (
+                <CommandEmpty data-testid="command-palette-fullcontent-no-results">
+                  <Trans>No files matched "{fullContentQueryText}".</Trans>
+                </CommandEmpty>
+              ) : null}
+
+              {fullContentView.results.show ? (
+                <CommandGroup
+                  heading={
+                    fullContentView.results.dimmed
+                      ? t`Showing results for "${fullContentResultsLabel}"`
+                      : t`All files`
+                  }
+                >
+                  <div
+                    data-testid="command-palette-fullcontent-results"
+                    data-dimmed={fullContentView.results.dimmed}
+                  >
+                    {fullContentResults.map((entry) => (
+                      <NavigationItem
+                        key={makeOmnibarRecentKey(entry.kind, entry.path)}
+                        entry={entry}
+                        disabled={fullContentView.results.dimmed}
+                        onSelect={() => navigateToFullContentEntry(entry)}
                       />
                     ))}
                   </div>
