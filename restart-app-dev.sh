@@ -53,4 +53,34 @@ stop_existing_dev_servers() {
 stop_existing_dev_servers
 
 cd "$repo_root"
-exec bun run --filter @inkeep/open-knowledge-app dev "$@"
+
+port="${VITE_PORT:-5173}"
+url="http://localhost:${port}/"
+
+# Start the dev server in the background so we can wait for it to come up,
+# print the URL to open, then hand the terminal back to the server.
+bun run --filter @inkeep/open-knowledge-app dev "$@" &
+dev_pid=$!
+
+# Forward Ctrl-C / termination to the dev server.
+trap 'kill -TERM "$dev_pid" 2>/dev/null || true' INT TERM
+
+# Wait for the port to start accepting connections (up to ~60s).
+for _ in {1..120}; do
+  if ! kill -0 "$dev_pid" 2>/dev/null; then
+    break
+  fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+    exec 3>&- 3<&-
+    echo
+    echo "[restart-app-dev] ┌────────────────────────────────────────────────"
+    echo "[restart-app-dev] │ App dev server ready — open:"
+    echo "[restart-app-dev] │   ${url}"
+    echo "[restart-app-dev] └────────────────────────────────────────────────"
+    echo
+    break
+  fi
+  sleep 0.5
+done
+
+wait "$dev_pid"
