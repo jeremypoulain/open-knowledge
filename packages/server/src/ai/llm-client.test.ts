@@ -75,7 +75,7 @@ describe('streamChat adapters', () => {
         messages: [{ role: 'user', content: 'hi' }],
         fetchImpl: fakeFetch(body),
       },
-      { surface: 'suggest-tags' },
+      { surface: 'suggest-metadata' },
     );
     expect(text).toBe('Hi there');
   });

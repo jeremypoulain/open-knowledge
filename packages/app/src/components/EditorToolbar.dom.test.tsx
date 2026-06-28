@@ -17,9 +17,9 @@ mock.module('./EditorBreadcrumb', () => ({
   ),
 }));
 
-mock.module('@/editor/ai/SuggestTagsPopover', () => ({
-  SuggestTagsPopover: ({ provider }: { provider: HocuspocusProvider }) => (
-    <span data-testid="suggest-tags-probe">{provider.configuration.name}</span>
+mock.module('@/editor/ai/SuggestAiPopover', () => ({
+  SuggestAiPopover: ({ provider }: { provider: HocuspocusProvider }) => (
+    <span data-testid="suggest-ai-probe">{provider.configuration.name}</span>
   ),
 }));
 
@@ -77,8 +77,8 @@ describe('EditorToolbar runtime layout', () => {
     expect(middleCell).toBeTruthy();
   });
 
-  test('renders the suggest-tags affordance when a provider is active', async () => {
+  test('renders the AI suggestions affordance when a provider is active', async () => {
     await renderToolbar();
-    expect(screen.getByTestId('suggest-tags-probe').textContent).toBe('docs/Page.md');
+    expect(screen.getByTestId('suggest-ai-probe').textContent).toBe('docs/Page.md');
   });
 });

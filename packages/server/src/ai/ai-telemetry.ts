@@ -49,7 +49,7 @@ function errorsCounter(): Counter {
 function callsCounter(): Counter {
   _calls ||= getMeter().createCounter('ok.ai.calls_total', {
     description:
-      'In-app LLM calls, by provider and surface. Bounded labels: provider, surface ∈ {transform, suggest-tags}.',
+      'In-app LLM calls, by provider and surface. Bounded labels: provider, surface ∈ {transform, suggest-metadata, suggest-filename}.',
   });
   return _calls;
 }
@@ -64,7 +64,7 @@ export function recordLlmProviderError(reason: LlmErrorReason): void {
 
 export function recordLlmCall(
   provider: LlmProviderLabel,
-  surface: 'transform' | 'suggest-tags',
+  surface: 'transform' | 'suggest-metadata' | 'suggest-filename',
 ): void {
   callsCounter().add(1, { provider, surface });
 }

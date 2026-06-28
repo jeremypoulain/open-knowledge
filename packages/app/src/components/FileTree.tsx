@@ -179,6 +179,7 @@ import { captureRenameSnapshots } from '@/editor/editor-cache';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
+import { subscribeToAiRenameDoc } from '@/lib/ai-rename-events';
 import { useConfigContext } from '@/lib/config-provider';
 import {
   hashFromAssetPath,
@@ -3289,6 +3290,35 @@ export function FileTree({
       );
     });
   }, [model]);
+
+  // AI "Suggest filename" applies its result by running a real rename through
+  // the tree pipeline (so wiki-links update and the active tab follows). The
+  // popover only knows the doc name + new base name; we resolve the directory
+  // and extension from the live document list here.
+  useEffect(() => {
+    return subscribeToAiRenameDoc(({ docName, newBaseName }) => {
+      const docEntry = documentsRef.current.find(
+        (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === docName,
+      );
+      const sourceTreePath = docNameToTreePath(docName, docEntry?.docExt);
+      const lastSlash = sourceTreePath.lastIndexOf('/');
+      const dir = lastSlash === -1 ? '' : sourceTreePath.slice(0, lastSlash + 1);
+      const extension = getFileExtension(sourceTreePath) || '.md';
+      const destinationTreePath = `${dir}${newBaseName}${extension}`;
+      if (destinationTreePath === sourceTreePath) return;
+      if (treePathsRef.current.includes(destinationTreePath)) {
+        toast.error(t`A file with that name already exists`);
+        return;
+      }
+      const event = {
+        sourcePath: sourceTreePath,
+        destinationPath: destinationTreePath,
+        isFolder: false,
+      } satisfies FileTreeRenameEvent;
+      handleRenameRef.current(event);
+      model.move(sourceTreePath, destinationTreePath);
+    });
+  }, [model, t]);
 
   function cancelCurrentHoverPrewarm() {
     const current = hoveredPrewarmDocRef.current;

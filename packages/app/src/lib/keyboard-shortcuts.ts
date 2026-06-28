@@ -350,8 +350,8 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
   {
     id: 'suggest-tags',
     category: 'wysiwyg',
-    title: msg`Suggest tags`,
-    description: msg`Ask the AI to suggest document tags and write them to the frontmatter.`,
+    title: msg`Suggest metadata`,
+    description: msg`Ask the AI to suggest a title, description, and tags, then write them to the frontmatter.`,
     scope: msg`Visual editor`,
     bindings: [
       {

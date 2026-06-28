@@ -26,7 +26,7 @@ import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { emitSuggestTags } from '@/editor/ai/suggest-tags-events';
+import { emitSuggestMetadata } from '@/editor/ai/suggest-metadata-events';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
 import { FindReplaceController } from '@/editor/find-replace/FindReplaceController';
 import { mountPromiseHasResolved } from '@/editor/mount-promise';
@@ -298,7 +298,7 @@ function EditorAreaInner({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (matchesKeyboardShortcut(event, 'suggest-tags')) {
         event.preventDefault();
-        emitSuggestTags(activeDocName);
+        emitSuggestMetadata(activeDocName);
       }
     };
     window.addEventListener('keydown', handleKeyDown);

@@ -476,7 +476,12 @@ const PROVIDER_LABELS: Record<AiProviderId, LlmProviderLabel> = {
  *  OpenTelemetry span. Yields text deltas. Records the call. */
 export function streamChat(
   req: ChatRequest,
-  opts: { surface: 'transform' | 'suggest-tags'; timeoutMs?: number } = { surface: 'transform' },
+  opts: {
+    surface: 'transform' | 'suggest-metadata' | 'suggest-filename';
+    timeoutMs?: number;
+  } = {
+    surface: 'transform',
+  },
 ): AsyncGenerator<string> {
   const fetchImpl = req.fetchImpl ?? fetch;
   const sleep = defaultSleep;
@@ -501,7 +506,12 @@ export function streamChat(
 /** Consumes a streaming chat into a single string. */
 export async function completeChat(
   req: ChatRequest,
-  opts: { surface: 'transform' | 'suggest-tags'; timeoutMs?: number } = { surface: 'suggest-tags' },
+  opts: {
+    surface: 'transform' | 'suggest-metadata' | 'suggest-filename';
+    timeoutMs?: number;
+  } = {
+    surface: 'suggest-metadata',
+  },
 ): Promise<string> {
   let out = '';
   for await (const delta of streamChat(req, opts)) {

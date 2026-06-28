@@ -5,7 +5,7 @@ import { ListPlus, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { SuggestTagsPopover } from '@/editor/ai/SuggestTagsPopover';
+import { SuggestAiPopover } from '@/editor/ai/SuggestAiPopover';
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
@@ -42,7 +42,7 @@ export function EditorToolbar({
   const { t } = useLingui();
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
-  const suggestTagsShortcut = formatShortcut('suggest-tags');
+  const suggestMetadataShortcut = formatShortcut('suggest-tags');
   const managed = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const projectSkillName = activeDocName ? parseProjectSkillContentDocName(activeDocName) : null;
   const activeSkill: { scope: SkillScope; name: string } | null =
@@ -123,10 +123,10 @@ export function EditorToolbar({
         {showAddPropertyButton && activeProvider ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <SuggestTagsPopover provider={activeProvider} />
+              <SuggestAiPopover provider={activeProvider} />
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <Trans>Suggest tags ({suggestTagsShortcut})</Trans>
+              <Trans>AI suggestions ({suggestMetadataShortcut})</Trans>
             </TooltipContent>
           </Tooltip>
         ) : null}

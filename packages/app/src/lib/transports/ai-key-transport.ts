@@ -40,12 +40,24 @@ export interface AiKeyTransport {
     },
     handlers: TransformStreamHandlers,
   ): Promise<void>;
-  suggestTags(body: {
+  suggestMetadata(body: {
     provider?: AiProviderId;
     model?: string;
     docMarkdown: string;
+    existingTitle?: string;
+    existingDescription?: string;
     existingTags?: string[];
-  }): Promise<{ ok: true; tags: string[] } | { ok: false; error?: string }>;
+  }): Promise<
+    | { ok: true; title: string | null; description: string | null; tags: string[] }
+    | { ok: false; error?: string }
+  >;
+  suggestFilename(body: {
+    provider?: AiProviderId;
+    model?: string;
+    docMarkdown: string;
+    existingTitle?: string;
+    currentFilename?: string;
+  }): Promise<{ ok: true; filename: string | null } | { ok: false; error?: string }>;
 }
 
 async function extractProblemTitle(res: Response): Promise<string | undefined> {
@@ -160,14 +172,35 @@ export function httpAiKeyTransport(): AiKeyTransport {
         } catch {}
       }
     },
-    async suggestTags(body) {
+    async suggestMetadata(body) {
       try {
-        const res = await postJson('/api/local-op/ai/suggest-tags', body);
+        const res = await postJson('/api/local-op/ai/suggest-metadata', body);
         if (!res.ok) {
           return { ok: false, error: (await extractProblemTitle(res)) ?? 'The AI request failed.' };
         }
-        const data = (await res.json()) as { tags?: string[] };
-        return { ok: true, tags: Array.isArray(data.tags) ? data.tags : [] };
+        const data = (await res.json()) as {
+          title?: string | null;
+          description?: string | null;
+          tags?: string[];
+        };
+        return {
+          ok: true,
+          title: typeof data.title === 'string' ? data.title : null,
+          description: typeof data.description === 'string' ? data.description : null,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+        };
+      } catch {
+        return { ok: false };
+      }
+    },
+    async suggestFilename(body) {
+      try {
+        const res = await postJson('/api/local-op/ai/suggest-filename', body);
+        if (!res.ok) {
+          return { ok: false, error: (await extractProblemTitle(res)) ?? 'The AI request failed.' };
+        }
+        const data = (await res.json()) as { filename?: string | null };
+        return { ok: true, filename: typeof data.filename === 'string' ? data.filename : null };
       } catch {
         return { ok: false };
       }

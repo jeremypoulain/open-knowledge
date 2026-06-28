@@ -155,12 +155,25 @@ export const LocalOpAiTransformRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAiTransformRequest = z.infer<typeof LocalOpAiTransformRequestSchema>;
 
-export const LocalOpAiSuggestTagsRequestSchema = z
+export const LocalOpAiSuggestMetadataRequestSchema = z
   .object({
     provider: AiProviderIdSchema.optional(),
     model: z.string().optional(),
     docMarkdown: z.string(),
+    existingTitle: z.string().optional(),
+    existingDescription: z.string().optional(),
     existingTags: z.array(z.string()).optional(),
   })
   .loose() satisfies StandardSchemaV1;
-export type LocalOpAiSuggestTagsRequest = z.infer<typeof LocalOpAiSuggestTagsRequestSchema>;
+export type LocalOpAiSuggestMetadataRequest = z.infer<typeof LocalOpAiSuggestMetadataRequestSchema>;
+
+export const LocalOpAiSuggestFilenameRequestSchema = z
+  .object({
+    provider: AiProviderIdSchema.optional(),
+    model: z.string().optional(),
+    docMarkdown: z.string(),
+    existingTitle: z.string().optional(),
+    currentFilename: z.string().optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAiSuggestFilenameRequest = z.infer<typeof LocalOpAiSuggestFilenameRequestSchema>;

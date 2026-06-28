@@ -101,7 +101,8 @@ import {
   LocalOpAiModelsRequestSchema,
   LocalOpAiModelsSuccessSchema,
   LocalOpAiStatusSuccessSchema,
-  LocalOpAiSuggestTagsRequestSchema,
+  LocalOpAiSuggestFilenameRequestSchema,
+  LocalOpAiSuggestMetadataRequestSchema,
   LocalOpAiTransformRequestSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
@@ -251,15 +252,17 @@ import {
   type AiKeyDescription,
   AiSecretsStore,
   completeChat,
+  FILENAME_SUGGESTION_SYSTEM_PROMPT,
   LlmHttpError,
   LlmRequestError,
   listAvailableModels,
-  parseTagSuggestions,
+  METADATA_SUGGESTION_SYSTEM_PROMPT,
+  parseFilenameSuggestion,
+  parseMetadataSuggestions,
   readAiUserConfig,
   resolveAiProvider,
   streamChat,
   systemPromptForAction,
-  TAG_SUGGESTION_SYSTEM_PROMPT,
 } from './ai/index.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { collectReferencedAssets, toContentRelativePath } from './asset-references.ts';
@@ -1864,10 +1867,6 @@ function applyDiskEventToLiveAllFilesIndex(
     updateFileIndex(event, live);
   }
 }
-
-/** Extracts a de-duplicated, validated list of tag suggestions from a model
- *  response. Tolerates a leading ```json fence and surrounding prose. */
-export { parseTagSuggestions } from './ai/index.ts';
 
 export function createApiExtension(options: ApiExtensionOptions): Extension {
   const {
@@ -13248,13 +13247,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     },
   );
 
-  // ---- In-app AI: provider key management, status, transform, suggest-tags ----
+  // ---- In-app AI: provider key management, status, transform, suggest-metadata ----
   const HANDLE_LOCAL_OP_AI_SET_KEY = 'local-op-ai-set-key';
   const HANDLE_LOCAL_OP_AI_CLEAR_KEY = 'local-op-ai-clear-key';
   const HANDLE_LOCAL_OP_AI_MODELS = 'local-op-ai-models';
   const HANDLE_LOCAL_OP_AI_STATUS = 'local-op-ai-status';
   const HANDLE_LOCAL_OP_AI_TRANSFORM = 'local-op-ai-transform';
-  const HANDLE_LOCAL_OP_AI_SUGGEST_TAGS = 'local-op-ai-suggest-tags';
+  const HANDLE_LOCAL_OP_AI_SUGGEST_METADATA = 'local-op-ai-suggest-metadata';
+  const HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME = 'local-op-ai-suggest-filename';
   const LOCAL_OP_AI_GUARD = '/api/local-op/ai';
 
   function aiUserConfig() {
@@ -13541,8 +13541,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     },
   );
 
-  const handleLocalOpAiSuggestTags = withValidation(
-    LocalOpAiSuggestTagsRequestSchema,
+  const handleLocalOpAiSuggestMetadata = withValidation(
+    LocalOpAiSuggestMetadataRequestSchema,
     async (req, res, body) => {
       const cfg = aiUserConfig();
       const resolved = resolveAiProvider(cfg, body.provider, body.model);
@@ -13554,16 +13554,38 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           400,
           'urn:ok:error:invalid-request',
           `No API key set for ${resolved.provider.label}. Add one in Settings → AI.`,
-          { handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS },
+          { handler: HANDLE_LOCAL_OP_AI_SUGGEST_METADATA },
         );
         return;
       }
-      const existing = Array.isArray(body.existingTags) ? body.existingTags : [];
-      const existingLine =
-        existing.length > 0
-          ? `\n\nExisting tag vocabulary (prefer reusing these when they fit): ${existing.join(', ')}`
-          : '';
-      const userPrompt = `Document (markdown):\n\n${body.docMarkdown}${existingLine}`;
+      const existingTags = Array.isArray(body.existingTags) ? body.existingTags : [];
+      // Inject the workspace-wide tag taxonomy (most-used first) so the model
+      // reuses the existing vocabulary instead of minting near-duplicates —
+      // this is what keeps tags consistent across documents. Capped to bound
+      // the prompt size on large knowledge bases.
+      const SUGGEST_METADATA_VOCAB_CAP = 200;
+      const vocabulary = (tagIndex?.getAllTags() ?? [])
+        .slice()
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+        .slice(0, SUGGEST_METADATA_VOCAB_CAP)
+        .map((entry) => entry.name);
+      const contextLines: string[] = [];
+      if (body.existingTitle && body.existingTitle.trim() !== '') {
+        contextLines.push(`Current title: ${body.existingTitle.trim()}`);
+      }
+      if (body.existingDescription && body.existingDescription.trim() !== '') {
+        contextLines.push(`Current description: ${body.existingDescription.trim()}`);
+      }
+      if (existingTags.length > 0) {
+        contextLines.push(`Tags already on this document: ${existingTags.join(', ')}`);
+      }
+      if (vocabulary.length > 0) {
+        contextLines.push(
+          `Tags already used across this knowledge base (reuse these to keep the taxonomy consistent; only introduce a new tag when none of these fit): ${vocabulary.join(', ')}`,
+        );
+      }
+      const contextBlock = contextLines.length > 0 ? `\n\n${contextLines.join('\n')}` : '';
+      const userPrompt = `Document (markdown):\n\n${body.docMarkdown}${contextBlock}`;
       try {
         const controller = new AbortController();
         req.on('close', () => {
@@ -13575,20 +13597,26 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             model: resolved.model,
             baseUrl: resolved.baseUrl,
             apiKey: key,
-            system: TAG_SUGGESTION_SYSTEM_PROMPT,
+            system: METADATA_SUGGESTION_SYSTEM_PROMPT,
             messages: [{ role: 'user', content: userPrompt }],
             signal: controller.signal,
           },
-          { surface: 'suggest-tags' },
+          { surface: 'suggest-metadata' },
         );
-        const tags = parseTagSuggestions(raw);
+        const metadata = parseMetadataSuggestions(raw);
         successResponse(
           res,
           200,
-          z.object({ tags: z.array(z.string()) }).loose(),
-          { tags },
+          z
+            .object({
+              title: z.string().nullable(),
+              description: z.string().nullable(),
+              tags: z.array(z.string()),
+            })
+            .loose(),
+          metadata,
           {
-            handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+            handler: HANDLE_LOCAL_OP_AI_SUGGEST_METADATA,
             extraHeaders: { 'Cache-Control': 'no-store' },
           },
         );
@@ -13600,16 +13628,91 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               ? err.message
               : 'The AI request failed.';
         errorResponse(res, 502, 'urn:ok:error:internal-server-error', detail, {
-          handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+          handler: HANDLE_LOCAL_OP_AI_SUGGEST_METADATA,
           cause: err,
         });
       }
     },
     {
-      handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS,
+      handler: HANDLE_LOCAL_OP_AI_SUGGEST_METADATA,
       method: 'POST',
       preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_SUGGEST_TAGS }),
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_SUGGEST_METADATA }),
+    },
+  );
+
+  const handleLocalOpAiSuggestFilename = withValidation(
+    LocalOpAiSuggestFilenameRequestSchema,
+    async (req, res, body) => {
+      const cfg = aiUserConfig();
+      const resolved = resolveAiProvider(cfg, body.provider, body.model);
+      const store = new AiSecretsStore(aiSecretsFile);
+      const key = await store.getKey(resolved.provider.id);
+      if (resolved.provider.keyRequired && !key) {
+        errorResponse(
+          res,
+          400,
+          'urn:ok:error:invalid-request',
+          `No API key set for ${resolved.provider.label}. Add one in Settings → AI.`,
+          { handler: HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME },
+        );
+        return;
+      }
+      const contextLines: string[] = [];
+      if (body.existingTitle && body.existingTitle.trim() !== '') {
+        contextLines.push(`Document title: ${body.existingTitle.trim()}`);
+      }
+      if (body.currentFilename && body.currentFilename.trim() !== '') {
+        contextLines.push(`Current file name: ${body.currentFilename.trim()}`);
+      }
+      const contextBlock = contextLines.length > 0 ? `\n\n${contextLines.join('\n')}` : '';
+      const userPrompt = `Document (markdown):\n\n${body.docMarkdown}${contextBlock}`;
+      try {
+        const controller = new AbortController();
+        req.on('close', () => {
+          if (!res.writableEnded) controller.abort();
+        });
+        const raw = await completeChat(
+          {
+            provider: resolved.provider,
+            model: resolved.model,
+            baseUrl: resolved.baseUrl,
+            apiKey: key,
+            system: FILENAME_SUGGESTION_SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: userPrompt }],
+            signal: controller.signal,
+          },
+          { surface: 'suggest-filename' },
+        );
+        const filename = parseFilenameSuggestion(raw);
+        successResponse(
+          res,
+          200,
+          z.object({ filename: z.string().nullable() }).loose(),
+          { filename },
+          {
+            handler: HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME,
+            extraHeaders: { 'Cache-Control': 'no-store' },
+          },
+        );
+      } catch (err) {
+        const detail =
+          err instanceof LlmHttpError
+            ? `The AI provider returned an error (HTTP ${err.status}).`
+            : err instanceof LlmRequestError
+              ? err.message
+              : 'The AI request failed.';
+        errorResponse(res, 502, 'urn:ok:error:internal-server-error', detail, {
+          handler: HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME,
+          cause: err,
+        });
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AI_SUGGEST_FILENAME }),
     },
   );
 
@@ -13888,7 +13991,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/ai/models': handleLocalOpAiModels,
     '/api/local-op/ai/status': handleLocalOpAiStatus,
     '/api/local-op/ai/transform': handleLocalOpAiTransform,
-    '/api/local-op/ai/suggest-tags': handleLocalOpAiSuggestTags,
+    '/api/local-op/ai/suggest-metadata': handleLocalOpAiSuggestMetadata,
+    '/api/local-op/ai/suggest-filename': handleLocalOpAiSuggestFilename,
     '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/spawn-cursor': handleSpawnCursorRoute,
     '/api/handoff': handleHandoffDispatchRoute,
